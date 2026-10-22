@@ -30,8 +30,25 @@ keep this work in a separate project instead.
 
 - macOS only so far. The Linux/GTK code and packaging files are still here but
   untouched and untested.
-- Builds are ad-hoc signed, not notarized, so macOS may prompt on first launch.
-- No prebuilt releases yet. Build it yourself, below.
+- Builds are ad-hoc signed, not notarized. See [Install](#install) for the
+  one-time step to open it.
+
+## Install
+
+Download the DMG from [Releases](https://github.com/adetxt/angelly/releases)
+and drag Angelly into Applications.
+
+Angelly isn't signed with an Apple Developer ID (it's a free side project), so
+the first launch shows "Apple could not verify Angelly is free of malware".
+To open it anyway, do one of these once:
+
+- Try to open Angelly, then go to **System Settings → Privacy & Security** and
+  click **Open Anyway**.
+- Or run:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Angelly.app
+  ```
 
 ## Build
 

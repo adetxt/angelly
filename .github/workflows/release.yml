@@ -45,6 +45,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          ## Install
+
+          Open the DMG and drag Angelly into Applications.
+
+          Angelly isn't notarized by Apple, so the first launch says Apple could not verify it. To open it anyway, do one of these once:
+
+          - Try to open Angelly, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+          - Or run `xattr -dr com.apple.quarantine /Applications/Angelly.app`
+          EOF
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --title "Angelly $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" --title "Angelly $GITHUB_REF_NAME" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
           gh release upload "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" --clobber
