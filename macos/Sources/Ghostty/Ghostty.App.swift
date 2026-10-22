@@ -122,13 +122,19 @@ extension Ghostty {
         }
 
         private static func openConfig(_ app: ghostty_app_t) {
-            guard let app_ud = ghostty_app_userdata(app) else { return }
-            let app = Unmanaged<App>.fromOpaque(app_ud).takeUnretainedValue()
-            app.openConfig()
+            if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
+                appDelegate.openConfig(nil)
+            }
         }
 
+        /// The config file the user edits, either by hand or via the settings window.
+        var configFilePath: String {
+            configPath ?? Ghostty.AllocatedString(ghostty_config_open_path()).string
+        }
+
+        /// Open the config file in the user's text editor.
         func openConfig() {
-            let str = configPath ?? Ghostty.AllocatedString(ghostty_config_open_path()).string
+            let str = configFilePath
             guard !str.isEmpty else { return }
             let fileURL = URL(fileURLWithPath: str).absoluteString
             var action = ghostty_action_open_url_s()

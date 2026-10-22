@@ -111,6 +111,9 @@ class AppDelegate: NSObject,
     /// The global undo manager for app-level state such as window restoration.
     lazy var undoManager = ExpiringUndoManager()
 
+    /// The settings window, created the first time it is opened.
+    private lazy var settingsController = SettingsController(ghostty: ghostty)
+
     /// The current state of the quick terminal.
     private var quickTerminalControllerState: QuickTerminalState = .uninitialized
 
@@ -998,7 +1001,9 @@ class AppDelegate: NSObject,
     // MARK: - IB Actions
 
     @IBAction func openConfig(_ sender: Any?) {
-        ghostty.openConfig()
+        settingsController.showWindow(sender)
+        settingsController.window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @IBAction func reloadConfig(_ sender: Any?) {

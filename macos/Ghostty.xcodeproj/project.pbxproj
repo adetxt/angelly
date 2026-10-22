@@ -576,6 +576,7 @@
 				MARKETING_VERSION = 0.1.0;
 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.adetxt.angelly;
+				PRODUCT_MODULE_NAME = Ghostty;
 				PRODUCT_NAME = Angelly;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
@@ -973,6 +974,7 @@
 				MARKETING_VERSION = 0.1.0;
 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.adetxt.angelly.debug;
+				PRODUCT_MODULE_NAME = Ghostty;
 				PRODUCT_NAME = Angelly;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
@@ -1028,6 +1030,7 @@
 				MARKETING_VERSION = 0.1.0;
 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.adetxt.angelly;
+				PRODUCT_MODULE_NAME = Ghostty;
 				PRODUCT_NAME = Angelly;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
