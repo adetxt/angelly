@@ -3,10 +3,10 @@ import Cocoa
 
 extension UpdateDriver: SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
-        // Angelly has no appcast of its own yet. Never fall back to Ghostty's
-        // feeds: their releases are signed with Ghostty's key and would
-        // replace this app. Add our own URL here once we publish updates.
-        return nil
+        // The release workflow attaches appcast.xml to every GitHub release,
+        // so "latest" always describes the newest version. Never point this
+        // at Ghostty's feeds: their releases would replace this app.
+        return "https://github.com/adetxt/angelly/releases/latest/download/appcast.xml"
     }
 
     /// Called when an update is scheduled to install silently,

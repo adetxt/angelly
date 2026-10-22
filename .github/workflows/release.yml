@@ -41,6 +41,27 @@ jobs:
           shasum -a 256 "$dmg" > "$dmg.sha256"
           echo "DMG=$dmg" >> "$GITHUB_ENV"
 
+      # The app's update check reads appcast.xml from the latest release, so
+      # each release's appcast only needs to describe its own DMG. It is signed
+      # with the key whose public half is SUPublicEDKey in Ghostty-Info.plist.
+      - name: Generate appcast
+        env:
+          SPARKLE_VERSION: 2.9.6
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "SPARKLE_ED_PRIVATE_KEY secret is not set" >&2
+            exit 1
+          fi
+          curl -fsSL "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-for-Swift-Package-Manager.zip" -o "$RUNNER_TEMP/sparkle.zip"
+          unzip -q "$RUNNER_TEMP/sparkle.zip" -d "$RUNNER_TEMP/sparkle"
+          mkdir "$RUNNER_TEMP/updates"
+          cp "$DMG" "$RUNNER_TEMP/updates/"
+          echo "$SPARKLE_ED_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            -o appcast.xml "$RUNNER_TEMP/updates"
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,4 +78,4 @@ jobs:
           EOF
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --title "Angelly $GITHUB_REF_NAME" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
-          gh release upload "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" --clobber
+          gh release upload "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" appcast.xml --clobber
