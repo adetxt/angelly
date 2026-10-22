@@ -1,0 +1,50 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds Angelly.app and publishes it as a DMG on the
+# matching GitHub release. The tag must match `.version` in build.zig.zon.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Install Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Check version matches tag
+        run: |
+          built=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' zig-out/Angelly.app/Contents/Info.plist)
+          if [ "v$built" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match app version $built (bump .version in build.zig.zon)" >&2
+            exit 1
+          fi
+
+      - name: Package DMG
+        run: |
+          dmg=$(scripts/make-dmg.sh)
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --title "Angelly $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" --clobber
