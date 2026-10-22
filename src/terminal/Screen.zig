@@ -3396,7 +3396,7 @@ pub fn selectWordBetween(
 /// The boundary_codepoints parameter should be a slice of u21 codepoints that
 /// mark word boundaries. This is expected to be pre-parsed from the config.
 pub fn selectWord(
-    self: *Screen,
+    self: *const Screen,
     pin: Pin,
     boundary_codepoints: []const u21,
 ) ?Selection {
@@ -3474,7 +3474,7 @@ pub fn selectWord(
 }
 
 /// Return the codepoint for word selection, following wide-character spacers.
-fn selectWordCodepoint(pin: Pin) ?u21 {
+pub fn selectWordCodepoint(pin: Pin) ?u21 {
     const rac = pin.rowAndCell();
     const cell = switch (rac.cell.wide) {
         .narrow, .wide => rac.cell,

@@ -510,6 +510,83 @@ pub fn adjust(
     }
 }
 
+/// Direction for `adjustWord`.
+pub const WordDirection = enum { left, right };
+
+/// Adjust the selection's end by one word, using the same word boundaries
+/// as `Screen.selectWord`. Moving right lands on the last cell of the next
+/// word and moving left lands on the first cell of the previous (or current)
+/// word. Blank cells and boundary characters between words are skipped.
+/// The end is left untouched if there is no word in that direction.
+pub fn adjustWord(
+    self: *Selection,
+    s: *const Screen,
+    direction: WordDirection,
+    boundary_codepoints: []const u21,
+) void {
+    const end_pin = self.endPtr();
+    var it = end_pin.cellIterator(switch (direction) {
+        .left => .left_up,
+        .right => .right_down,
+    }, null);
+    _ = it.next();
+    while (it.next()) |next| {
+        const codepoint = Screen.selectWordCodepoint(next) orelse continue;
+        if (std.mem.indexOfScalar(u21, boundary_codepoints, codepoint) != null) continue;
+
+        const word = s.selectWord(next, boundary_codepoints) orelse return;
+        end_pin.* = switch (direction) {
+            .left => word.start(),
+            .right => word.end(),
+        };
+        return;
+    }
+}
+
+test "Selection: adjust word" {
+    const testing = std.testing;
+    var s = try Screen.init(testing.io, testing.allocator, .{ .cols = 20, .rows = 5, .max_scrollback_bytes = 0 });
+    defer s.deinit();
+    try s.testWriteString("foo bar-baz  qux\nnext");
+
+    const boundary = [_]u21{' '};
+    var sel = Selection.init(
+        s.pages.pin(.{ .screen = .{ .x = 0, .y = 0 } }).?,
+        s.pages.pin(.{ .screen = .{ .x = 1, .y = 0 } }).?,
+        false,
+    );
+    defer sel.deinit(&s);
+
+    // Moving right lands on the end of the current/next word, skipping blanks.
+    const rights = [_]point.Point{
+        .{ .screen = .{ .x = 2, .y = 0 } },
+        .{ .screen = .{ .x = 10, .y = 0 } },
+        .{ .screen = .{ .x = 15, .y = 0 } },
+        .{ .screen = .{ .x = 3, .y = 1 } },
+        .{ .screen = .{ .x = 3, .y = 1 } }, // no more words
+    };
+    for (rights) |want| {
+        sel.adjustWord(&s, .right, &boundary);
+        try testing.expectEqual(want, s.pages.pointFromPin(.screen, sel.end()).?);
+    }
+
+    // Moving left lands on the start of the current/previous word.
+    const lefts = [_]point.Point{
+        .{ .screen = .{ .x = 0, .y = 1 } },
+        .{ .screen = .{ .x = 13, .y = 0 } },
+        .{ .screen = .{ .x = 4, .y = 0 } },
+        .{ .screen = .{ .x = 0, .y = 0 } },
+        .{ .screen = .{ .x = 0, .y = 0 } }, // no more words
+    };
+    for (lefts) |want| {
+        sel.adjustWord(&s, .left, &boundary);
+        try testing.expectEqual(want, s.pages.pointFromPin(.screen, sel.end()).?);
+    }
+
+    // The start of the selection never moves.
+    try testing.expectEqual(point.Point{ .screen = .{ .x = 0, .y = 0 } }, s.pages.pointFromPin(.screen, sel.start()).?);
+}
+
 test "Selection: adjust right" {
     const testing = std.testing;
     var s = try Screen.init(testing.io, testing.allocator, .{ .cols = 10, .rows = 10, .max_scrollback_bytes = 0 });

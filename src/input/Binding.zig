@@ -478,8 +478,9 @@ pub const Action = union(enum) {
     /// Adjust the current selection in the given direction or position,
     /// relative to the cursor.
     ///
-    /// WARNING: This does not create a new selection, and does nothing when
-    /// there currently isn't one.
+    /// When there currently isn't a selection, one is started at the cursor.
+    /// If it can't be adjusted in the given direction, no selection is made
+    /// and the key is passed through to the terminal.
     ///
     /// Valid arguments are:
     ///
@@ -504,6 +505,12 @@ pub const Action = union(enum) {
     ///
     ///     Adjust the selection to the beginning or the end of the line
     ///     respectively.
+    ///
+    ///   - `left_word`, `right_word`
+    ///
+    ///     Adjust the selection to the start of the previous word or the end
+    ///     of the next word respectively. Words are delimited the same way as
+    ///     double-click selection (see `selection-word-chars`).
     ///
     adjust_selection: AdjustSelection,
 
@@ -1047,6 +1054,8 @@ pub const Action = union(enum) {
         end,
         beginning_of_line,
         end_of_line,
+        left_word,
+        right_word,
     };
 
     pub const SplitDirection = enum {

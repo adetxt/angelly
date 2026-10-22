@@ -5770,24 +5770,38 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             defer self.renderer_state.mutex.unlock(global.io());
 
             const screen: *terminal.Screen = self.io.terminal.screens.active;
-            const sel = if (screen.selection) |*sel| sel else {
-                // If we don't have a selection we do not perform this
-                // action, allowing the keybind to fall through to the
-                // terminal.
+            const seeded = screen.selection == null;
+            if (seeded) {
+                // If we don't have a selection, start one at the cursor.
+                const cursor = screen.cursor.page_pin.*;
+                try screen.select(terminal.Selection.init(cursor, cursor, false));
+            }
+            const sel = &screen.selection.?;
+            const words = self.config.selection_word_chars;
+            switch (direction) {
+                .left_word => sel.adjustWord(screen, .left, words),
+                .right_word => sel.adjustWord(screen, .right, words),
+                else => sel.adjust(screen, switch (direction) {
+                    .left => .left,
+                    .right => .right,
+                    .up => .up,
+                    .down => .down,
+                    .page_up => .page_up,
+                    .page_down => .page_down,
+                    .home => .home,
+                    .end => .end,
+                    .beginning_of_line => .beginning_of_line,
+                    .end_of_line => .end_of_line,
+                    .left_word, .right_word => unreachable,
+                }),
+            }
+
+            // A seeded selection that didn't grow means there was nothing to
+            // select in that direction, so let the terminal have the key.
+            if (seeded and sel.start().eql(sel.end())) {
+                screen.clearSelection();
                 return false;
-            };
-            sel.adjust(screen, switch (direction) {
-                .left => .left,
-                .right => .right,
-                .up => .up,
-                .down => .down,
-                .page_up => .page_up,
-                .page_down => .page_down,
-                .home => .home,
-                .end => .end,
-                .beginning_of_line => .beginning_of_line,
-                .end_of_line => .end_of_line,
-            });
+            }
 
             // If the selection endpoint is outside of the current viewpoint,
             // scroll it in to view. Note we always specifically use sel.end
