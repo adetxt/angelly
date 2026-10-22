@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Use this container to achieve a glass effect at the window level.
@@ -40,6 +41,15 @@ class TerminalViewContainer: NSView {
     var initialContentSize: NSSize?
 
     override var intrinsicContentSize: NSSize {
+        var size = terminalIntrinsicContentSize
+        // Keep the terminal grid at its configured size when a sidebar sits beside it.
+        if size.width != NSView.noIntrinsicMetric {
+            size.width += tabSidebarWidth?.constant ?? 0
+        }
+        return size
+    }
+
+    private var terminalIntrinsicContentSize: NSSize {
         let hostingSize = terminalView.intrinsicContentSize
         // The hosting view returns a valid size once SwiftUI has laid out
         // with the correct idealWidth/idealHeight. Before that (when
@@ -55,12 +65,50 @@ class TerminalViewContainer: NSView {
     private func setup() {
         addSubview(terminalView)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
+        terminalLeadingConstraint = terminalView.leadingAnchor.constraint(equalTo: leadingAnchor)
         NSLayoutConstraint.activate([
             terminalView.topAnchor.constraint(equalTo: topAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            terminalLeadingConstraint,
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+    }
+
+    // MARK: Tab Sidebar
+
+    private var terminalLeadingConstraint: NSLayoutConstraint!
+    private var tabSidebar: NSView?
+    private var tabSidebarWidth: NSLayoutConstraint?
+    private var tabSidebarCancellable: AnyCancellable?
+
+    /// Places the vertical tab sidebar to the left of the terminal. It collapses to zero
+    /// width (and hides) whenever `TabSidebarState` says it is off.
+    func installTabSidebar(_ model: TabSidebarModel) {
+        guard tabSidebar == nil else { return }
+
+        let sidebar = NSHostingView(rootView: TabSidebarView(model: model))
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+        sidebar.sizingOptions = []
+        addSubview(sidebar)
+
+        let width = sidebar.widthAnchor.constraint(equalToConstant: 0)
+        terminalLeadingConstraint.isActive = false
+        terminalLeadingConstraint = terminalView.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
+        NSLayoutConstraint.activate([
+            sidebar.topAnchor.constraint(equalTo: topAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            width,
+            terminalLeadingConstraint,
+        ])
+
+        tabSidebar = sidebar
+        tabSidebarWidth = width
+        tabSidebarCancellable = TabSidebarState.shared.$isVisible.sink { [weak self] visible in
+            self?.tabSidebar?.isHidden = !visible
+            self?.tabSidebarWidth?.constant = visible ? TabSidebarState.width : 0
+            self?.invalidateIntrinsicContentSize()
+        }
     }
 
     override func viewDidMoveToWindow() {

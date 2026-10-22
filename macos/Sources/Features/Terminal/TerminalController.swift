@@ -1123,6 +1123,12 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // SwiftUI focus chain.
         container.initialContentSize = focusedSurface?.initialSize
 
+        // The "tabs" titlebar style draws its own tab bar in the titlebar, so it has no
+        // use for the sidebar.
+        if config.windowDecorations, config.macosTitlebarStyle != .tabs {
+            container.installTabSidebar(TabSidebarModel(window: window, ghostty: ghostty))
+        }
+
         window.contentView = container
 
         // If we have a default size, we want to apply it.

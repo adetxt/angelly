@@ -68,6 +68,7 @@
                 <outlet property="menuSplitUp" destination="Ggp-7N-GbX" id="YJF-uq-S4Y"/>
                 <outlet property="menuTerminalInspector" destination="QwP-M5-fvh" id="wJi-Dh-S9f"/>
                 <outlet property="menuToggleFullScreen" destination="8kY-Pi-KaY" id="yQg-6V-OO6"/>
+                <outlet property="menuToggleTabSidebar" destination="Tsb-Mn-001" id="Tsb-Ol-002"/>
                 <outlet property="menuToggleVisibility" destination="DOX-wA-ilh" id="iBj-Bc-2bq"/>
                 <outlet property="menuUndo" destination="r83-CV-syt" id="bU9-0b-xgQ"/>
                 <outlet property="menuUseAsDefault" destination="TrB-O8-g8H" id="af4-Jh-2HU"/>
@@ -344,6 +345,12 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="changeTabTitle:" target="-1" id="Jhl-9P-bMj"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Show Tab Sidebar" keyEquivalent="s" id="Tsb-Mn-001">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="toggleTabSidebar:" target="bbz-4X-AYv" id="Tsb-Ac-003"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Change Terminal Title..." id="24I-xg-qIq">

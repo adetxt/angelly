@@ -71,6 +71,7 @@ class AppDelegate: NSObject,
     @IBOutlet private var menuResetFontSize: NSMenuItem?
     @IBOutlet private var menuChangeTitle: NSMenuItem?
     @IBOutlet private var menuChangeTabTitle: NSMenuItem?
+    @IBOutlet private var menuToggleTabSidebar: NSMenuItem?
     @IBOutlet private var menuReadonly: NSMenuItem?
     @IBOutlet private var menuQuickTerminal: NSMenuItem?
     @IBOutlet private var menuTerminalInspector: NSMenuItem?
@@ -1178,6 +1179,7 @@ extension AppDelegate {
         self.menuCommandPalette?.setImageIfDesired(systemSymbolName: "filemenu.and.selection")
         self.menuQuickTerminal?.setImageIfDesired(systemSymbolName: "apple.terminal")
         self.menuChangeTabTitle?.setImageIfDesired(systemSymbolName: "pencil.line")
+        self.menuToggleTabSidebar?.setImageIfDesired(systemSymbolName: "sidebar.left")
         self.menuTerminalInspector?.setImageIfDesired(systemSymbolName: "scope")
         self.menuReadonly?.setImageIfDesired(systemSymbolName: "eye.fill")
         self.menuSetAsDefaultTerminal?.setImageIfDesired(systemSymbolName: "star.fill")
@@ -1280,6 +1282,14 @@ extension AppDelegate {
     }
 }
 
+// MARK: Tab Sidebar
+
+extension AppDelegate {
+    @IBAction func toggleTabSidebar(_ sender: Any?) {
+        TabSidebarState.shared.toggle()
+    }
+}
+
 // MARK: Floating Windows
 
 extension AppDelegate {
@@ -1340,6 +1350,11 @@ extension AppDelegate: NSMenuItemValidation {
             // Float on top items only active if the key window is a primary
             // terminal window (not quick terminal).
             return NSApp.keyWindow is TerminalWindow
+
+        case #selector(toggleTabSidebar(_:)):
+            item.title = TabSidebarState.shared.isVisible ? "Hide Tab Sidebar" : "Show Tab Sidebar"
+            // The "tabs" titlebar style draws its own tab bar, so there is no sidebar.
+            return ghostty.config.macosTitlebarStyle != .tabs
 
         case #selector(undo(_:)):
             if undoManager.canUndo {

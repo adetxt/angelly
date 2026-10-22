@@ -66,6 +66,7 @@ class TerminalWindow: NSWindow {
             guard tabColor != oldValue else { return }
             tabColorIndicator.rootView = TabColorIndicatorView(tabColor: tabColor)
             invalidateRestorableState()
+            NotificationCenter.default.post(name: .terminalWindowTabDidChangeNotification, object: self)
         }
     }
 
@@ -260,6 +261,7 @@ class TerminalWindow: NSWindow {
         // it. This has been verified to work on macOS 12 to 26
         if isTabBar(childViewController) {
             childViewController.identifier = Self.tabBarIdentifier
+            childViewController.isHidden = tabBarIsHidden
             tabBarDidAppear()
         }
     }
@@ -273,6 +275,16 @@ class TerminalWindow: NSWindow {
     }
 
     // MARK: Tab Bar
+
+    /// True when a tab sidebar stands in for the native tab bar, which is then kept hidden
+    /// each time AppKit attaches it.
+    var tabBarIsHidden = false {
+        didSet {
+            for controller in titlebarAccessoryViewControllers where isTabBar(controller) {
+                controller.isHidden = tabBarIsHidden
+            }
+        }
+    }
 
     /// This identifier is attached to the tab bar view controller when we detect it being
     /// added.
@@ -393,6 +405,7 @@ class TerminalWindow: NSWindow {
             tab.attributedTitle = attributedTitle
             guard title != oldValue else { return }
 
+            NotificationCenter.default.post(name: .terminalWindowTabDidChangeNotification, object: self)
             syncWindowTitleAppearance()
         }
     }
