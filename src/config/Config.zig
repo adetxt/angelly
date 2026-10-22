@@ -2294,10 +2294,10 @@ keybind: Keybinds = .{},
 /// running, the previous window state will not be restored because Ghostty only
 /// saves state on exit if this is enabled.
 ///
-/// The default value is `default`.
+/// The default value is `always`.
 ///
 /// This is currently only supported on macOS. This has no effect on Linux.
-@"window-save-state": WindowSaveState = .default,
+@"window-save-state": WindowSaveState = .always,
 
 /// Resize the window in discrete increments of the focused surface's cell size.
 /// If this is disabled, surfaces are resized in pixel increments. Currently
