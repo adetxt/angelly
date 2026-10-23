@@ -17,9 +17,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
+      # mlugg/setup-zig still runs on the deprecated Node 20, so install Zig
+      # with a script that verifies the download the same way.
+      - name: Install Zig
+        run: |
+          brew install minisign
+          scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
 
       - name: Install Metal toolchain
         run: xcodebuild -downloadComponent MetalToolchain
@@ -70,7 +73,8 @@ jobs:
       - name: Sign, notarize and package DMG
         run: |
           dmg=$(scripts/sign-and-notarize.sh)
-          shasum -a 256 "$dmg" > "$dmg.sha256"
+          # Record the bare filename so `shasum -c` works next to the download.
+          (cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")") > "$dmg.sha256"
           echo "DMG=$dmg" >> "$GITHUB_ENV"
 
       # The app's update check reads appcast.xml from the latest release, so
