@@ -35,9 +35,41 @@ jobs:
             exit 1
           fi
 
-      - name: Package DMG
+      # The Developer ID certificate and the notary API key go into a throwaway
+      # keychain that the last step deletes.
+      - name: Import signing credentials
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_API_KEY_BASE64: ${{ secrets.NOTARY_API_KEY_BASE64 }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
         run: |
-          dmg=$(scripts/make-dmg.sh)
+          for name in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD NOTARY_API_KEY_BASE64 NOTARY_API_KEY_ID NOTARY_API_ISSUER; do
+            if [ -z "${!name}" ]; then
+              echo "$name secret is not set" >&2
+              exit 1
+            fi
+          done
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -base64 24)
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/developer_id.p12"
+          security import "$RUNNER_TEMP/developer_id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          echo "$NOTARY_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool store-credentials angelly-notary --keychain "$keychain" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER"
+          rm "$RUNNER_TEMP/developer_id.p12" "$RUNNER_TEMP/notary.p8"
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Sign, notarize and package DMG
+        run: |
+          dmg=$(scripts/sign-and-notarize.sh)
           shasum -a 256 "$dmg" > "$dmg.sha256"
           echo "DMG=$dmg" >> "$GITHUB_ENV"
 
@@ -70,12 +102,14 @@ jobs:
           ## Install
 
           Open the DMG and drag Angelly into Applications.
-
-          Angelly isn't notarized by Apple, so the first launch says Apple could not verify it. To open it anyway, do one of these once:
-
-          - Try to open Angelly, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
-          - Or run `xattr -dr com.apple.quarantine /Applications/Angelly.app`
           EOF
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --title "Angelly $GITHUB_REF_NAME" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
           gh release upload "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" appcast.xml --clobber
+
+      - name: Delete signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN:-}" ]; then
+            security delete-keychain "$KEYCHAIN"
+          fi
