@@ -76,7 +76,13 @@ final class TabSidebarModel: ObservableObject {
 
         // The sidebar's own controls vanish with it, so the toggle lives in the titlebar.
         if window.styleMask.contains(.titled) {
-            window.addTitlebarAccessoryViewController(TabSidebarToggleAccessory())
+            let accessory = NSTitlebarAccessoryViewController()
+            accessory.layoutAttribute = .left
+            // Non-draggable so a slightly moving click isn't taken as a titlebar window drag.
+            accessory.view = NonDraggableHostingView(rootView: TabSidebarToggleButton(state: .shared))
+            window.addTitlebarAccessoryViewController(accessory)
+            // Same as the other titlebar accessories: adding resets this, so it comes after.
+            accessory.view.translatesAutoresizingMaskIntoConstraints = false
         }
     }
 
@@ -136,28 +142,26 @@ final class TabSidebarModel: ObservableObject {
 
 /// The show/hide button next to the traffic lights. It stays put in both states, so a
 /// collapsed sidebar can always be brought back.
-private final class TabSidebarToggleAccessory: NSTitlebarAccessoryViewController {
-    private let button = NSButton()
-    private var cancellable: AnyCancellable?
+///
+/// AppKit asserts if a titlebar accessory view moves inside its container, which happens
+/// on a display change when the view is shorter than the container. The `Spacer` makes the
+/// hosting view fill the container's height, like the other titlebar accessories.
+private struct TabSidebarToggleButton: View {
+    @ObservedObject var state: TabSidebarState
 
-    override func loadView() {
-        button.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Toggle Tab Sidebar")
-        button.isBordered = false
-        button.imagePosition = .imageOnly
-        button.contentTintColor = .secondaryLabelColor
-        button.target = self
-        button.action = #selector(toggle)
-        button.frame = NSRect(x: 0, y: 0, width: 34, height: 24)
-        view = button
-        layoutAttribute = .left
-
-        cancellable = TabSidebarState.shared.$isVisible.sink { [weak self] visible in
-            self?.button.toolTip = visible ? "Hide Tab Sidebar" : "Show Tab Sidebar"
+    var body: some View {
+        VStack {
+            Button(action: state.toggle) {
+                Image(systemName: "sidebar.left")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(state.isVisible ? "Hide Tab Sidebar" : "Show Tab Sidebar")
+            .frame(width: 20, height: 20)
+            Spacer()
         }
-    }
-
-    @objc private func toggle() {
-        TabSidebarState.shared.toggle()
+        .padding(.top, 5)
+        .padding(.horizontal, 7)
     }
 }
 
