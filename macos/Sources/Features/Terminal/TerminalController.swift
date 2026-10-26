@@ -1582,17 +1582,25 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // Get our target window
         let targetWindow = tabbedWindows[finalIndex]
 
+        Self.moveTab(selectedWindow, relativeTo: targetWindow, ordered: action.amount < 0 ? .below : .above)
+    }
+
+    /// Moves `tab` next to `target` within their tab group. The selected tab stays selected.
+    static func moveTab(_ tab: NSWindow, relativeTo target: NSWindow, ordered: NSWindow.OrderingMode) {
+        guard let tabGroup = tab.tabGroup else { return }
+        let selected = tabGroup.selectedWindow ?? tab
+
         // Moving tabs on macOS 26 RC causes very nasty visual glitches in the titlebar tabs.
         // I believe this is due to messed up constraints for our hacky tab bar. I'd like to
         // find a better workaround. For now, this improves things dramatically.
         //
         // Reproduction: titlebar tabs, create two tabs, "move tab left"
         if #available(macOS 26, *) {
-            if window is TitlebarTabsTahoeTerminalWindow {
-                tabGroup.removeWindow(selectedWindow)
-                targetWindow.addTabbedWindowSafely(selectedWindow, ordered: action.amount < 0 ? .below : .above)
+            if tab is TitlebarTabsTahoeTerminalWindow {
+                tabGroup.removeWindow(tab)
+                target.addTabbedWindowSafely(tab, ordered: ordered)
                 DispatchQueue.main.async {
-                    selectedWindow.makeKey()
+                    selected.makeKey()
                 }
 
                 return
@@ -1604,11 +1612,11 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         NSAnimationContext.current.duration = 0
 
         // Remove and re-add the window in the correct position
-        tabGroup.removeWindow(selectedWindow)
-        targetWindow.addTabbedWindowSafely(selectedWindow, ordered: action.amount < 0 ? .below : .above)
+        tabGroup.removeWindow(tab)
+        target.addTabbedWindowSafely(tab, ordered: ordered)
 
         // Ensure our window remains selected
-        selectedWindow.makeKey()
+        selected.makeKey()
 
         NSAnimationContext.endGrouping()
     }
