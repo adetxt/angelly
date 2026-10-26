@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// App-wide on/off state of the vertical tab sidebar. The sidebar replaces the native
 /// tab bar in every terminal window at once, so the preference is global and persisted.
@@ -22,6 +23,11 @@ final class TabSidebarState: ObservableObject {
     }
 }
 
+extension UTType {
+    /// Marks a sidebar row drag. It carries no data: the dragged row is `TabSidebarModel.dragged`.
+    static let ghosttyTabSidebarItem = UTType(exportedAs: "com.mitchellh.ghosttyTabSidebarItem")
+}
+
 /// Mirrors the native tab group of one terminal window so the sidebar can render it.
 /// The native tab group stays the source of truth (selection, ordering, restoration,
 /// keybinds); the sidebar only reads it and forwards actions to the tab controllers.
@@ -38,6 +44,10 @@ final class TabSidebarModel: ObservableObject {
     }
 
     @Published private(set) var items: [Item] = []
+
+    /// The row being dragged, shared by every window's sidebar so a stale drag from one
+    /// window can never be mistaken for another's. Only a row of the same tab group can drop.
+    private(set) static var dragged: Item.ID?
 
     private weak var window: NSWindow?
     private let ghostty: Ghostty.App
@@ -129,6 +139,25 @@ final class TabSidebarModel: ObservableObject {
 
     func select(_ item: Item) {
         item.window?.makeKeyAndOrderFront(nil)
+    }
+
+    func beginDrag(_ item: Item) {
+        Self.dragged = item.id
+    }
+
+    /// The side of `item` where the dragged row would land, or nil if it can't drop there.
+    func dropEdge(on item: Item) -> VerticalEdge? {
+        guard let from = items.firstIndex(where: { $0.id == Self.dragged }),
+              let to = items.firstIndex(where: { $0.id == item.id }),
+              from != to else { return nil }
+        return from < to ? .bottom : .top
+    }
+
+    func drop(on item: Item) {
+        guard let edge = dropEdge(on: item),
+              let dragged = items.first(where: { $0.id == Self.dragged })?.window,
+              let target = item.window else { return }
+        TerminalController.moveTab(dragged, relativeTo: target, ordered: edge == .bottom ? .above : .below)
     }
 
     func newTab() {
@@ -242,6 +271,7 @@ private struct TabSidebarRow: View {
     let item: TabSidebarModel.Item
 
     @State private var hovering = false
+    @State private var isDropTarget = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -269,7 +299,28 @@ private struct TabSidebarRow: View {
         .animation(.easeOut(duration: 0.12), value: hovering)
         .animation(.easeOut(duration: 0.12), value: item.isSelected)
         .onHover { hovering = $0 }
+        .overlay(alignment: model.dropEdge(on: item) == .top ? .top : .bottom) {
+            if isDropTarget {
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+                    .padding(.horizontal, 4)
+            }
+        }
         .onTapGesture { model.select(item) }
+        .onDrag {
+            model.beginDrag(item)
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(
+                for: .ghosttyTabSidebarItem, visibility: .ownProcess
+            ) { completion in
+                completion(Data(), nil)
+                return nil
+            }
+            return provider
+        }
+        .onDrop(of: [.ghosttyTabSidebarItem], delegate: TabSidebarDropDelegate(
+            model: model, item: item, isTargeted: $isDropTarget))
         .contextMenu { contextMenu }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(item.isSelected ? [.isButton, .isSelected] : .isButton)
@@ -323,5 +374,33 @@ private struct TabSidebarRow: View {
 
     private func close() {
         model.controller(item.window)?.closeTab(nil)
+    }
+}
+
+private struct TabSidebarDropDelegate: DropDelegate {
+    let model: TabSidebarModel
+    let item: TabSidebarModel.Item
+    @Binding var isTargeted: Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        model.dropEdge(on: item) != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        isTargeted = true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        isTargeted = false
+        model.drop(on: item)
+        return true
     }
 }
