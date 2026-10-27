@@ -680,6 +680,7 @@ private struct TabSidebarGroupHeader: View {
     @State private var isDropTarget = false
     @State private var draft = ""
     @FocusState private var fieldFocused: Bool
+    @State private var editShortcutMonitor: Any?
 
     private var isRenaming: Bool { model.renaming == header.id }
 
@@ -703,7 +704,12 @@ private struct TabSidebarGroupHeader: View {
                     .onSubmit { model.rename(header.id, to: draft) }
                     .onExitCommand { model.rename(header.id, to: "") }
                     .onChange(of: fieldFocused) { focused in
-                        if !focused { model.rename(header.id, to: draft) }
+                        if focused {
+                            startEditShortcutMonitor()
+                        } else {
+                            stopEditShortcutMonitor()
+                            model.rename(header.id, to: draft)
+                        }
                     }
             } else {
                 Text(header.name)
@@ -781,11 +787,24 @@ private struct TabSidebarGroupHeader: View {
             // The field only exists once this update lands.
             DispatchQueue.main.async { fieldFocused = true }
         }
+        .onDisappear { stopEditShortcutMonitor() }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(header.name), \(header.count) tabs, \(header.isCollapsed ? "collapsed" : "expanded")")
         .accessibilityAction(named: header.isCollapsed ? "Expand Group" : "Collapse Group") {
             model.toggleCollapsed(header.id)
+        }
+    }
+
+    private func startEditShortcutMonitor() {
+        guard editShortcutMonitor == nil else { return }
+        editShortcutMonitor = TitleEditShortcuts.monitor { _ in fieldFocused }
+    }
+
+    private func stopEditShortcutMonitor() {
+        if let editShortcutMonitor {
+            NSEvent.removeMonitor(editShortcutMonitor)
+            self.editShortcutMonitor = nil
         }
     }
 }
