@@ -440,8 +440,12 @@ class BaseTerminalController: NSWindowController,
         alert.addButton(withTitle: "Cancel")
 
         alert.window.initialFirstResponder = textField
+        let editShortcutMonitor = TitleEditShortcuts.monitor { [weak textField] fieldEditor in
+            textField?.currentEditor() === fieldEditor
+        }
 
         alert.beginSheetModal(for: window) { [weak self] response in
+            if let editShortcutMonitor { NSEvent.removeMonitor(editShortcutMonitor) }
             guard let self else { return }
             guard response == .alertFirstButtonReturn else { return }
 

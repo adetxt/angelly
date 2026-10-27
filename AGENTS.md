@@ -31,6 +31,10 @@ A file for [guiding coding agents](https://agents.md/).
 - macOS app: `macos/`
 - GTK (Linux and FreeBSD) app: `src/apprt/gtk`
 
+## Commit Guidelines
+
+- Use `emoji (type): message` for commit messages.
+
 ## Issue and PR Guidelines
 
 - Never create an issue.

@@ -1,5 +1,25 @@
 import AppKit
 
+/// Routes standard text-editing shortcuts while a specific title field is active.
+enum TitleEditShortcuts {
+    static func monitor(accepts: @escaping (NSTextView) -> Bool) -> Any? {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window === NSApp.keyWindow,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  let editor = event.window?.firstResponder as? NSTextView,
+                  accepts(editor) else { return event }
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "x": editor.cut(nil)
+            case "c": editor.copy(nil)
+            case "v": editor.paste(nil)
+            case "a": editor.selectAll(nil)
+            default: return event
+            }
+            return nil
+        }
+    }
+}
+
 /// Delegate used by ``TabTitleEditor`` to resolve tab-specific behavior.
 protocol TabTitleEditorDelegate: AnyObject {
     /// Returns whether inline rename should be allowed for the given tab window.
@@ -42,6 +62,7 @@ final class TabTitleEditor: NSObject, NSTextFieldDelegate {
     private weak var delegate: TabTitleEditorDelegate?
     /// Local event monitor so fullscreen titlebar-window clicks can also trigger rename.
     private var eventMonitor: Any?
+    private var editShortcutMonitor: Any?
 
     /// Active inline editor view, if editing is in progress.
     private weak var inlineTitleEditor: NSTextField?
@@ -71,6 +92,9 @@ final class TabTitleEditor: NSObject, NSTextFieldDelegate {
     deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
+        }
+        if let editShortcutMonitor {
+            NSEvent.removeMonitor(editShortcutMonitor)
         }
     }
 
@@ -181,6 +205,9 @@ final class TabTitleEditor: NSObject, NSTextFieldDelegate {
         editor.isHidden = true
 
         inlineTitleEditor = editor
+        editShortcutMonitor = TitleEditShortcuts.monitor { [weak editor] fieldEditor in
+            editor?.currentEditor() === fieldEditor
+        }
         inlineTitleTargetWindow = targetWindow
         previousTabState = tabState
         // Temporarily hide native title label views while editing so only the text field is visible.
@@ -230,6 +257,10 @@ final class TabTitleEditor: NSObject, NSTextFieldDelegate {
 
         // To finish editing we need a current editor.
         guard let editor = inlineTitleEditor else { return }
+        if let editShortcutMonitor {
+            NSEvent.removeMonitor(editShortcutMonitor)
+            self.editShortcutMonitor = nil
+        }
         let editedTitle = editor.stringValue
         let targetWindow = inlineTitleTargetWindow
 

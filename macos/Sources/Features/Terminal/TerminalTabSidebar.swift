@@ -128,7 +128,11 @@ final class TabSidebarModel: ObservableObject {
 
     /// The row being dragged, shared by every window's sidebar so a stale drag from one
     /// window can never be mistaken for another's. Only a row of the same tab group can drop.
-    private(set) static var dragged: Item.ID?
+    private enum Dragged {
+        case tab(Item.ID)
+        case group(UUID, anchor: Item.ID)
+    }
+    private static var dragged: Dragged?
 
     private weak var window: NSWindow?
     private let ghostty: Ghostty.App
@@ -265,28 +269,78 @@ final class TabSidebarModel: ObservableObject {
     }
 
     func beginDrag(_ item: Item) {
-        Self.dragged = item.id
+        Self.dragged = .tab(item.id)
+    }
+
+    func beginDrag(_ group: UUID, anchor: Item.ID) {
+        Self.dragged = .group(group, anchor: anchor)
+    }
+
+    private var draggedRun: [Item] {
+        guard case let .group(id, anchor) = Self.dragged,
+              let start = items.firstIndex(where: { $0.id == anchor && $0.group == id }) else { return [] }
+        return Array(items[start...].prefix { $0.group == id })
     }
 
     /// The side of `item` where the dragged row would land, or nil if it can't drop there.
     func dropEdge(on item: Item) -> VerticalEdge? {
-        guard let from = items.firstIndex(where: { $0.id == Self.dragged }),
-              let to = items.firstIndex(where: { $0.id == item.id }),
-              from != to else { return nil }
+        guard let to = items.firstIndex(where: { $0.id == item.id }) else { return nil }
+        if case .group = Self.dragged {
+            let run = draggedRun
+            guard let first = run.first, !run.contains(where: { $0.id == item.id }),
+                  let from = items.firstIndex(where: { $0.id == first.id }) else { return nil }
+            return from < to ? .bottom : .top
+        }
+        guard let dragged = draggedItem,
+              let from = items.firstIndex(where: { $0.id == dragged.id }), from != to else { return nil }
         return from < to ? .bottom : .top
     }
 
     func drop(on item: Item) {
-        guard let edge = dropEdge(on: item),
-              let dragged = items.first(where: { $0.id == Self.dragged })?.window,
-              let target = item.window else { return }
+        guard let edge = dropEdge(on: item) else { return }
+        if case .group = Self.dragged {
+            moveDraggedGroup(relativeTo: item, edge: edge)
+            return
+        }
+        guard let dragged = draggedItem?.window, let target = item.window else { return }
         TerminalController.moveTab(dragged, relativeTo: target, ordered: edge == .bottom ? .above : .below)
         // Landing next to a tab means joining its group (or leaving the old one).
         (dragged as? TerminalWindow)?.sidebarGroup = item.group
     }
 
     var draggedItem: Item? {
-        items.first { $0.id == Self.dragged }
+        guard case let .tab(id) = Self.dragged else { return nil }
+        return items.first { $0.id == id }
+    }
+
+    private func moveDraggedGroup(relativeTo item: Item, edge: VerticalEdge) {
+        let run = draggedRun
+        guard !run.isEmpty, let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        // A group lands outside the target's entire run, never splitting another group.
+        var targetIndex = index
+        if let group = item.group {
+            if edge == .top {
+                while targetIndex > 0 && items[targetIndex - 1].group == group { targetIndex -= 1 }
+            } else {
+                while targetIndex + 1 < items.count && items[targetIndex + 1].group == group { targetIndex += 1 }
+            }
+        }
+        guard let target = items[targetIndex].window else { return }
+        let moving = edge == .top ? run : Array(run.reversed())
+        for item in moving {
+            guard let tab = item.window else { continue }
+            TerminalController.moveTab(tab, relativeTo: target, ordered: edge == .top ? .below : .above)
+        }
+    }
+
+    func groupDropEdge(anchor: Item.ID) -> VerticalEdge? {
+        guard case .group = Self.dragged, let item = items.first(where: { $0.id == anchor }) else { return nil }
+        return dropEdge(on: item)
+    }
+
+    func dropGroup(anchor: Item.ID) {
+        guard let item = items.first(where: { $0.id == anchor }), let edge = groupDropEdge(anchor: anchor) else { return }
+        moveDraggedGroup(relativeTo: item, edge: edge)
     }
 
     /// Dropping on a group header appends the dragged tab to that group.
@@ -413,8 +467,8 @@ struct TabSidebarView: View {
                     ForEach(model.rows) { row in
                         Group {
                             switch row {
-                            case .group(let header, _):
-                                TabSidebarGroupHeader(model: model, header: header)
+                            case .group(let header, let anchor):
+                                TabSidebarGroupHeader(model: model, header: header, anchor: anchor)
                             case .tab(let item):
                                 TabSidebarRow(model: model, item: item)
                             }
@@ -620,11 +674,13 @@ private struct TabSidebarRow: View {
 private struct TabSidebarGroupHeader: View {
     @ObservedObject var model: TabSidebarModel
     let header: TabSidebarModel.GroupHeader
+    let anchor: TabSidebarModel.Item.ID
 
     @State private var hovering = false
     @State private var isDropTarget = false
     @State private var draft = ""
     @FocusState private var fieldFocused: Bool
+    @State private var editShortcutMonitor: Any?
 
     private var isRenaming: Bool { model.renaming == header.id }
 
@@ -648,7 +704,12 @@ private struct TabSidebarGroupHeader: View {
                     .onSubmit { model.rename(header.id, to: draft) }
                     .onExitCommand { model.rename(header.id, to: "") }
                     .onChange(of: fieldFocused) { focused in
-                        if !focused { model.rename(header.id, to: draft) }
+                        if focused {
+                            startEditShortcutMonitor()
+                        } else {
+                            stopEditShortcutMonitor()
+                            model.rename(header.id, to: draft)
+                        }
                     }
             } else {
                 Text(header.name)
@@ -683,10 +744,27 @@ private struct TabSidebarGroupHeader: View {
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
         .onTapGesture { if !isRenaming { model.toggleCollapsed(header.id) } }
+        .onDrag {
+            model.beginDrag(header.id, anchor: anchor)
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(for: .ghosttyTabSidebarItem, visibility: .ownProcess) { completion in
+                completion(Data(), nil)
+                return nil
+            }
+            return provider
+        }
+        .overlay(alignment: model.groupDropEdge(anchor: anchor) == .top ? .top : .bottom) {
+            if isDropTarget && model.groupDropEdge(anchor: anchor) != nil {
+                Capsule().fill(Color.accentColor).frame(height: 2).padding(.horizontal, 4)
+            }
+        }
         .onDrop(of: [.ghosttyTabSidebarItem], delegate: TabSidebarDropDelegate(
             isTargeted: $isDropTarget,
-            canDrop: { model.canDrop(onGroup: header.id) },
-            drop: { model.drop(onGroup: header.id) }))
+            canDrop: { model.groupDropEdge(anchor: anchor) != nil || model.canDrop(onGroup: header.id) },
+            drop: {
+                if model.groupDropEdge(anchor: anchor) != nil { model.dropGroup(anchor: anchor) }
+                else { model.drop(onGroup: header.id) }
+            }))
         .contextMenu {
             Button("Rename Group...") { model.renaming = header.id }
 
@@ -709,11 +787,24 @@ private struct TabSidebarGroupHeader: View {
             // The field only exists once this update lands.
             DispatchQueue.main.async { fieldFocused = true }
         }
+        .onDisappear { stopEditShortcutMonitor() }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(header.name), \(header.count) tabs, \(header.isCollapsed ? "collapsed" : "expanded")")
         .accessibilityAction(named: header.isCollapsed ? "Expand Group" : "Collapse Group") {
             model.toggleCollapsed(header.id)
+        }
+    }
+
+    private func startEditShortcutMonitor() {
+        guard editShortcutMonitor == nil else { return }
+        editShortcutMonitor = TitleEditShortcuts.monitor { _ in fieldFocused }
+    }
+
+    private func stopEditShortcutMonitor() {
+        if let editShortcutMonitor {
+            NSEvent.removeMonitor(editShortcutMonitor)
+            self.editShortcutMonitor = nil
         }
     }
 }
