@@ -30,10 +30,24 @@ final class TabSidebarState: ObservableObject {
 final class TabGroupStore: ObservableObject {
     static let shared = TabGroupStore()
 
-    struct Info {
+    struct Info: Codable {
         var name: String
         var color: TerminalTabColor
         var isCollapsed = false
+    }
+
+    struct Snapshot: Codable {
+        let id: UUID
+        let info: Info
+    }
+
+    func snapshot(_ id: UUID?) -> Snapshot? {
+        guard let id, let info = groups[id] else { return nil }
+        return Snapshot(id: id, info: info)
+    }
+
+    func restore(_ snapshot: Snapshot) {
+        if groups[snapshot.id] == nil { groups[snapshot.id] = snapshot.info }
     }
 
     @Published private(set) var groups: [UUID: Info] = [:]
@@ -53,6 +67,9 @@ final class TabGroupStore: ObservableObject {
         guard var info = groups[id] else { return }
         change(&info)
         groups[id] = info
+        for case let window as TerminalWindow in NSApp.windows where window.sidebarGroup == id {
+            window.invalidateRestorableState()
+        }
     }
 
     func remove(_ id: UUID) {

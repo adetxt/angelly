@@ -72,10 +72,11 @@ class TerminalWindow: NSWindow {
 
     /// The tab sidebar group this tab belongs to. The group's name, color and collapsed
     /// state live in `TabGroupStore`; membership lives here so it follows the tab when it
-    /// moves between windows. It isn't restored.
+    /// moves between windows.
     var sidebarGroup: UUID? {
         didSet {
             guard sidebarGroup != oldValue else { return }
+            invalidateRestorableState()
             NotificationCenter.default.post(name: .terminalWindowTabDidChangeNotification, object: self)
         }
     }

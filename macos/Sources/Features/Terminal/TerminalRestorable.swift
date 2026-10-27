@@ -58,7 +58,7 @@ extension TerminalRestorable {
 
 /// The state stored for terminal window restoration.
 final class TerminalRestorableState: TerminalRestorable {
-    static var version: Int { 7 }
+    static var version: Int { 8 }
     static var minimumVersion: Int { 5 }
 
     var focusedSurface: String? {
@@ -73,6 +73,9 @@ final class TerminalRestorableState: TerminalRestorable {
     var tabColor: TerminalTabColor? {
         internalState.tabColor
     }
+    var sidebarGroup: TabGroupStore.Snapshot? {
+        internalState.sidebarGroup
+    }
     var titleOverride: String? {
         internalState.titleOverride
     }
@@ -84,6 +87,7 @@ final class TerminalRestorableState: TerminalRestorable {
     /// we use an internal type to perform migration and tests
     private let internalState: InternalState<Ghostty.SurfaceView>
 
+    @MainActor
     init(from controller: TerminalController) {
         internalState = .init(from: controller)
     }
@@ -166,6 +170,11 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
         // Restore our tab color and avoid unnecessary `invalidateRestorableState` calls
         if let tabColor = state.tabColor {
             (window as? TerminalWindow)?.tabColor = tabColor
+        }
+
+        if let group = state.sidebarGroup, let window = window as? TerminalWindow {
+            TabGroupStore.shared.restore(group)
+            window.sidebarGroup = group.id
         }
 
         // Restore the tab title override

@@ -15,10 +15,13 @@ extension TerminalRestorableState {
         let effectiveFullscreenMode: FullscreenMode?
         let tabColor: TerminalTabColor?
         let titleOverride: String?
+
+        let sidebarGroup: TabGroupStore.Snapshot?
     }
 }
 
 extension TerminalRestorableState.InternalState where ViewType == Ghostty.SurfaceView {
+    @MainActor
     init(from controller: TerminalController) {
         self.init(
             focusedSurface: controller.focusedSurface?.id.uuidString,
@@ -26,6 +29,7 @@ extension TerminalRestorableState.InternalState where ViewType == Ghostty.Surfac
             effectiveFullscreenMode: controller.fullscreenStyle?.fullscreenMode,
             tabColor: (controller.window as? TerminalWindow)?.tabColor,
             titleOverride: controller.titleOverride,
+            sidebarGroup: TabGroupStore.shared.snapshot((controller.window as? TerminalWindow)?.sidebarGroup),
         )
     }
 }
