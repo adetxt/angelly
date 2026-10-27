@@ -478,9 +478,8 @@ pub const Action = union(enum) {
     /// Adjust the current selection in the given direction or position,
     /// relative to the cursor.
     ///
-    /// When there currently isn't a selection, one is started at the cursor.
-    /// If it can't be adjusted in the given direction, no selection is made
-    /// and the key is passed through to the terminal.
+    /// This does nothing when there is no selection. With a performable
+    /// keybinding, the key is then passed through to the terminal.
     ///
     /// Valid arguments are:
     ///
