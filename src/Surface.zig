@@ -5770,13 +5770,7 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             defer self.renderer_state.mutex.unlock(global.io());
 
             const screen: *terminal.Screen = self.io.terminal.screens.active;
-            const seeded = screen.selection == null;
-            if (seeded) {
-                // If we don't have a selection, start one at the cursor.
-                const cursor = screen.cursor.page_pin.*;
-                try screen.select(terminal.Selection.init(cursor, cursor, false));
-            }
-            const sel = &screen.selection.?;
+            const sel = if (screen.selection) |*sel| sel else return false;
             const words = self.config.selection_word_chars;
             switch (direction) {
                 .left_word => sel.adjustWord(screen, .left, words),
@@ -5794,13 +5788,6 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
                     .end_of_line => .end_of_line,
                     .left_word, .right_word => unreachable,
                 }),
-            }
-
-            // A seeded selection that didn't grow means there was nothing to
-            // select in that direction, so let the terminal have the key.
-            if (seeded and sel.start().eql(sel.end())) {
-                screen.clearSelection();
-                return false;
             }
 
             // If the selection endpoint is outside of the current viewpoint,
