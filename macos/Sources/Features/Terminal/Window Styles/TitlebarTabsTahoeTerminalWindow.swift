@@ -80,6 +80,10 @@ class TitlebarTabsTahoeTerminalWindow: TransparentTitlebarTerminalWindow, NSTool
     // This is called by macOS for native tabbing in order to add the tab bar. We hook into
     // this, detect the tab bar being added, and override its behavior.
     override func addTitlebarAccessoryViewController(_ childViewController: NSTitlebarAccessoryViewController) {
+        if tabBarIsHidden {
+            super.addTitlebarAccessoryViewController(childViewController)
+            return
+        }
         // If this is the tab bar then we need to set it up for the titlebar
         guard isTabBar(childViewController) else {
             // After dragging a tab into a new window, `hasTabBar` needs to be
@@ -150,6 +154,7 @@ class TitlebarTabsTahoeTerminalWindow: TransparentTitlebarTerminalWindow, NSTool
     ///
     /// There are more scenarios to look out for and they're documented within the method.
     func setupTabBar() {
+        guard !tabBarIsHidden else { return }
         // We only want to setup the observer once
         guard tabBarObserver == nil else { return }
 

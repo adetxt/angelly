@@ -124,9 +124,9 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.mitchellh.ghosttyTabSidebarItem</string>
+			<string>com.mitchellh.ghosttyTerminalTabItem</string>
 			<key>UTTypeDescription</key>
-			<string>Ghostty Tab Sidebar Item</string>
+			<string>Ghostty Terminal Tab Item</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

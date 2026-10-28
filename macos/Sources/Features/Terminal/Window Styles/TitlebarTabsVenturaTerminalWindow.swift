@@ -267,7 +267,7 @@ class TitlebarTabsVenturaTerminalWindow: TerminalWindow {
             // Updating the title text as above automatically reveals the
             // native title view in macOS 15.0 and above. Since we're using
             // a custom view instead, we need to re-hide it.
-            titleVisibility = .hidden
+            titleVisibility = titlebarTabs ? .hidden : .visible
             if let toolbar = toolbar as? TerminalToolbar {
                 toolbar.titleText = title
             }

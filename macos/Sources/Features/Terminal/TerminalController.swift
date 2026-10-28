@@ -464,22 +464,9 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // If we don't allow tabs then we create a new window instead.
         if window.tabbingMode != .disallowed {
-            let tabCreated: Bool
-            // Add the window to the tab group and show it.
-            switch ghostty.config.windowNewTabPosition {
-            case "end":
-                // If we already have a tab group and we want the new tab to open at the end,
-                // then we use the last window in the tab group as the parent.
-                if let last = parent.tabGroup?.windows.last {
-                    tabCreated = last.addTabbedWindowSafely(window, ordered: .above)
-                } else {
-                    fallthrough
-                }
-
-            case "current": fallthrough
-            default:
-                tabCreated = parent.addTabbedWindowSafely(window, ordered: .above)
-            }
+            // Append outside sidebar groups so creating a tab never splits a group.
+            let last = parent.tabGroup?.windows.last ?? parent
+            let tabCreated = last.addTabbedWindowSafely(window, ordered: .above)
             if tabCreated {
                 // We set the selectedWindow early here because we want the next window
                 // to become first responder as quickly as possible. Usually this is
@@ -952,12 +939,18 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             // then we can't restore tabs.
             guard let firstController = controllers.first else { return }
 
+            // Showing the restored windows can auto-tab them before we set their order.
+            for controller in controllers {
+                if let window = controller.window, let group = window.tabGroup, group.windows.count > 1 {
+                    group.removeWindow(window)
+                }
+            }
+
             // Add all subsequent controllers as tabs to the first window
             for controller in controllers.dropFirst() {
-                controller.showWindow(nil)
-                if let firstWindow = firstController.window,
+                if let lastWindow = firstController.window?.tabGroup?.windows.last ?? firstController.window,
                    let newWindow = controller.window {
-                    firstWindow.addTabbedWindowSafely(newWindow, ordered: .above)
+                    lastWindow.addTabbedWindowSafely(newWindow, ordered: .above)
                 }
             }
 
@@ -1129,10 +1122,10 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // SwiftUI focus chain.
         container.initialContentSize = focusedSurface?.initialSize
 
-        // The "tabs" titlebar style draws its own tab bar in the titlebar, so it has no
-        // use for the sidebar.
-        if config.windowDecorations, config.macosTitlebarStyle != .tabs {
-            container.installTabSidebar(TabSidebarModel(window: window, ghostty: ghostty))
+        // Custom tab layouts share the same native windows for every decorated style.
+        if config.windowDecorations {
+            (window as? TitlebarTabsVenturaTerminalWindow)?.titlebarTabs = false
+            container.installTabViews(TerminalTabModel(window: window, ghostty: ghostty))
         }
 
         window.contentView = container
@@ -1382,6 +1375,44 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             informativeText: "At least one other tab still has a running process. If you close the tab the process will be killed."
         ) {
             self.closeOtherTabsImmediately()
+        }
+    }
+
+    func closeTabGroup(_ id: UUID) {
+        guard let tabGroup = window?.tabGroup else { return }
+        let candidates = tabGroup.windows.compactMap { $0 as? TerminalWindow }
+            .filter { $0.sidebarGroup == id }
+        guard !candidates.isEmpty else { return }
+
+        let close = { [self] in
+            // A confirmation sheet yields to the event loop; membership may have changed.
+            let members = candidates.filter { $0.sidebarGroup == id && $0.tabGroup === tabGroup }
+            let undoManager = self.undoManager
+            undoManager?.beginUndoGrouping()
+            defer { undoManager?.endUndoGrouping() }
+            if !members.isEmpty && members.count == tabGroup.windows.count {
+                // Whole-window undo rebuilds the native group after its final tab closes.
+                (members[0].windowController as? TerminalController)?.closeWindowImmediately()
+            } else {
+                for member in members.reversed() {
+                    (member.windowController as? TerminalController)?.closeTabImmediately()
+                }
+            }
+            undoManager?.setActionName("Close Group")
+        }
+        let needsConfirmation = candidates.contains {
+            ($0.windowController as? TerminalController)?.surfaceTree.contains(where: { $0.needsConfirmQuit }) ?? false
+        }
+        guard needsConfirmation else {
+            close()
+            return
+        }
+        Task {
+            guard let response = await confirmCloseAsync(
+                messageText: "Close Group?",
+                informativeText: "At least one tab in this group has a running process. Closing the group will terminate its sessions."
+            ), [.OK, .alertFirstButtonReturn].contains(response) else { return }
+            close()
         }
     }
 

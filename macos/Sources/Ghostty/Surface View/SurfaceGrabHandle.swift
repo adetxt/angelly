@@ -63,6 +63,9 @@ extension Ghostty {
                     )
                     .frame(width: Self.handleSize.width, height: Self.handleSize.height)
                     .contentShape(Rectangle())
+                    // The surface's scroll view sets its own document cursor, which wins
+                    // over the drag source's AppKit cursor rect on macOS 15+.
+                    .backport.pointerStyle(isDragging ? .grabActive : .grabIdle)
 
                     if ellipsisVisible {
                         Image(systemName: "ellipsis")

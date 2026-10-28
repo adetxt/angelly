@@ -46,6 +46,9 @@ class TerminalViewContainer: NSView {
         if size.width != NSView.noIntrinsicMetric {
             size.width += tabSidebarWidth?.constant ?? 0
         }
+        if size.height != NSView.noIntrinsicMetric {
+            size.height += tabBarHeight?.constant ?? 0
+        }
         return size
     }
 
@@ -66,8 +69,9 @@ class TerminalViewContainer: NSView {
         addSubview(terminalView)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalLeadingConstraint = terminalView.leadingAnchor.constraint(equalTo: leadingAnchor)
+        terminalTopConstraint = terminalView.topAnchor.constraint(equalTo: topAnchor)
         NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: topAnchor),
+            terminalTopConstraint,
             terminalLeadingConstraint,
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -77,13 +81,15 @@ class TerminalViewContainer: NSView {
     // MARK: Tab Sidebar
 
     private var terminalLeadingConstraint: NSLayoutConstraint!
+    private var terminalTopConstraint: NSLayoutConstraint!
     private var tabSidebar: NSView?
     private var tabSidebarWidth: NSLayoutConstraint?
+    private var tabBar: NSView?
+    private var tabBarHeight: NSLayoutConstraint?
     private var tabSidebarCancellable: AnyCancellable?
 
-    /// Places the vertical tab sidebar to the left of the terminal. It collapses to zero
-    /// width (and hides) whenever `TabSidebarState` says it is off.
-    func installTabSidebar(_ model: TabSidebarModel) {
+    /// Shows one custom tab layout at a time, reserving space outside the terminal grid.
+    func installTabViews(_ model: TerminalTabModel) {
         guard tabSidebar == nil else { return }
 
         let sidebar = NSHostingView(rootView: TabSidebarView(model: model))
@@ -91,22 +97,39 @@ class TerminalViewContainer: NSView {
         sidebar.sizingOptions = []
         addSubview(sidebar)
 
+        let bar = NSHostingView(rootView: TerminalTabBar(model: model))
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.sizingOptions = []
+        addSubview(bar)
+
         let width = sidebar.widthAnchor.constraint(equalToConstant: 0)
+        let height = bar.heightAnchor.constraint(equalToConstant: 0)
         terminalLeadingConstraint.isActive = false
+        terminalTopConstraint.isActive = false
         terminalLeadingConstraint = terminalView.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
+        terminalTopConstraint = terminalView.topAnchor.constraint(equalTo: bar.bottomAnchor)
         NSLayoutConstraint.activate([
             sidebar.topAnchor.constraint(equalTo: topAnchor),
             sidebar.leadingAnchor.constraint(equalTo: leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: bottomAnchor),
             width,
             terminalLeadingConstraint,
+            bar.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bar.topAnchor.constraint(equalTo: topAnchor),
+            height,
+            terminalTopConstraint,
         ])
 
         tabSidebar = sidebar
         tabSidebarWidth = width
+        tabBar = bar
+        tabBarHeight = height
         tabSidebarCancellable = TabSidebarState.shared.$isVisible.sink { [weak self] visible in
             self?.tabSidebar?.isHidden = !visible
             self?.tabSidebarWidth?.constant = visible ? TabSidebarState.width : 0
+            self?.tabBar?.isHidden = visible
+            self?.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
             self?.invalidateIntrinsicContentSize()
         }
     }
