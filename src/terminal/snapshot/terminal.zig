@@ -980,7 +980,7 @@ pub fn decode(
     );
 
     // Terminal.init establishes native pools, pins, defaults, and ownership.
-    var result = try Terminal.init(io_, alloc, .{
+    var result = Terminal.init(io_, alloc, .{
         .cols = header.columns,
         .rows = header.rows,
         .max_scrollback_bytes = max_scrollback_bytes,
@@ -994,7 +994,12 @@ pub fn decode(
         .default_modes = header.default_modes,
         .default_cursor_style = header.cursor_default_style,
         .default_cursor_blink = header.cursor_default_blink,
-    });
+    }) catch |err| switch (err) {
+        // Header.decode already rejects zero dimensions, so this should
+        // not happen. Map it to our own error to keep DecodeError exact.
+        error.InvalidValue => return error.InvalidDimensions,
+        else => |e| return e,
+    };
     errdefer result.deinit(alloc);
 
     // The terminal owns the decoded palette now, so the payload must not

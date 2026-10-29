@@ -218,6 +218,7 @@ const terminal_page = @import("../page.zig");
 const TerminalPageList = @import("../PageList.zig");
 const TerminalScreen = @import("../Screen.zig");
 const TerminalScreenKey = @import("../ScreenSet.zig").Key;
+const terminal_size = @import("../size.zig");
 const terminal_style = @import("../style.zig");
 
 const TerminalHyperlink = terminal_hyperlink.Hyperlink;
@@ -2190,6 +2191,60 @@ test "SCREEN validates pending wrap against a mixed-width cursor page" {
     try std.testing.expectEqual(@as(u16, 4), decoded.screen.cursor.page_pin.node.cols());
     try std.testing.expectEqual(@as(u16, 3), decoded.screen.cursor.x);
     try std.testing.expect(decoded.screen.cursor.pending_wrap);
+    decoded.screen.assertIntegrity();
+}
+
+test "SCREEN resizes a decoded max-width page to a narrow width" {
+    var screen = try TerminalScreen.init(
+        std.testing.io,
+        std.testing.allocator,
+        .{ .cols = 8, .rows = 1, .max_scrollback_bytes = 0 },
+    );
+    defer screen.deinit();
+
+    // A snapshot can restore a page much wider than the terminal. Narrowing
+    // this page to 2 columns frees memory for more rows than a page can
+    // hold, so the resize must cap the row count. A page with only a couple
+    // of rows is too small to trigger this, so it uses 215 rows.
+    var wide_page = try terminal_page.Page.init(.{
+        .cols = std.math.maxInt(terminal_size.CellCountInt),
+        .rows = 215,
+    });
+    defer wide_page.deinit();
+
+    var destination: std.Io.Writer.Allocating = .init(
+        std.testing.allocator,
+    );
+    defer destination.deinit();
+    var stream: record.Writer = .init(
+        std.testing.allocator,
+        &destination.writer,
+    );
+    defer stream.deinit();
+
+    var header = Header.init(&screen, .primary, 1);
+    header.cursor_x = 0;
+    header.cursor_y = 0;
+    header.saved_cursor_present = false;
+
+    const screen_payload = stream.begin(.screen);
+    errdefer stream.cancel();
+    try header.encode(screen_payload);
+    try screen_payload.writeByte(0);
+    try stream.finish();
+    try page.encode(&wide_page, &stream);
+
+    var source: std.Io.Reader = .fixed(destination.written());
+    var decoded = try decode(
+        &source,
+        try record.nextHeader(&source),
+        std.testing.io,
+        std.testing.allocator,
+        .{ .cols = 8, .rows = 1, .max_scrollback_bytes = 0 },
+    );
+    defer decoded.deinit();
+
+    try decoded.screen.resize(.{ .cols = 2, .rows = 1 });
     decoded.screen.assertIntegrity();
 }
 

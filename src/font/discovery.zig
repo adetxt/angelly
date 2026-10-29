@@ -331,7 +331,11 @@ pub const Fontconfig = struct {
                 .fc = .{
                     .pattern = font_pattern,
                     .charset = (try font_pattern.get(.charset, 0)).char_set,
-                    .langset = (try font_pattern.get(.lang, 0)).lang_set,
+                    // NOTE: In vast majority of situations this contains a
+                    // `*const LangSet`, but Fontconfig falls back to a simple string
+                    // ("en") if the pattern fails to match any language. Bad bad bad
+                    // bad API design. But we must handle it gracefully here.
+                    .langset = try font_pattern.get(.lang, 0),
                     .variations = self.variations,
                 },
             };

@@ -98,10 +98,10 @@
       url = "https://deps.files.ghostty.org/N-V-__8AAEbOfQBnvcFcCX2W5z7tDaN8vaNZGamEQtNOe0UI.tar.gz";
       hash = "sha256-/jVT7+874LCeSF/pdNVTFoSOfRisSqxCJnt5/SGCXPQ=";
     };
-    "N-V-__8AAI2WBQDrsjfyEiqnmYZ4VfGdJaZhN2mKsaTaIVWq" = fetchzip {
+    "N-V-__8AAJ3vBQAq1fLMh5J8uWLkeDLS6WAdR2x5KcrmEyz6" = fetchzip {
       name = "iterm2_themes";
-      url = "https://deps.files.ghostty.org/ghostty-themes-release-20261012-151317-d3e95e4.tgz";
-      hash = "sha256-cC8U6wYmluVf/7Pc2FoAs1C6xQNBgwLrfwJ5gkO5VTo=";
+      url = "https://deps.files.ghostty.org/ghostty-themes-release-20261019-151001-86a776d.tgz";
+      hash = "sha256-x/hcGF3iiHl9ZF3AWsASJS8biQdTL1vFHf1CvHU7KOE=";
     };
     "N-V-__8AAIC5lwAVPJJzxnCAahSvZTIlG-HhtOvnM1uh-66x" = fetchurl {
       url = "https://deps.files.ghostty.org/JetBrainsMono-2.304.tar.gz";
@@ -186,10 +186,10 @@
       url = "https://deps.files.ghostty.org/wuffs-7411f488fe2e2c205c3d3b3d28638b7356522930.tar.gz";
       hash = "sha256-sOuwt3R6xG7oqXaA66QGUjFHrEjGnTXjwYs6rSRb+7I=";
     };
-    "z2d-0.12.2-pre-j5P_HilCEQDH_2RC0PZqYQd4rHTl13b-VXpaDQ1sE4kZ" = fetchzip {
+    "z2d-0.13.2-j5P_HkkVFAAtOSQPRTS7wbZLbYs7oETRn7nUKSUwDjM_" = fetchzip {
       name = "z2d";
-      url = "https://deps.files.ghostty.org/z2d-f3cf28188dae39946964c81475ff234c008125a6.tar.gz";
-      hash = "sha256-VF45ZKB+EWy219JTRSWSo+SnXJXsdztfWe8Wa5fGB+k=";
+      url = "https://github.com/vancluever/z2d/archive/8787d71bac42d9aab00428ccb37a4fd453418761.tar.gz";
+      hash = "sha256-EEs63f97CrNQy/p/1QOZ+F0Uus2++EtqODph1JiY2L4=";
     };
     "zf-0.11.0-OIRy8XCRAAB6FiMwIrtD6FqlagnFwpI6YyOu7bXeYH5J" = fetchzip {
       name = "zf";
@@ -211,11 +211,10 @@
       url = "https://deps.files.ghostty.org/zig_wayland-27dda01712ddf3cb46ebd93380d88b01a7c828f8.tar.gz";
       hash = "sha256-rtPmYAd+suOBW9bPmP42Tv1NGK+U5W0EDqpkakD8gtY=";
     };
-    "zigimg-0.1.0-8_eo2ri_FwBqF5UYiggLz4IGjHJO_n9-B6gT9Ayqg8G4" = fetchZigGit {
+    "zigimg-0.1.0-8_eo2ri_FwBqF5UYiggLz4IGjHJO_n9-B6gT9Ayqg8G4" = fetchzip {
       name = "zigimg";
-      url = "https://github.com/sergot/zigimg";
-      rev = "c701c9f99779d7ddf594dcc6da8f858fd277d61f";
-      hash = "sha256-E98GBI7t+CtgEyJjdIVEomXN+3Kn7to2XtZKixsPILk=";
+      url = "https://deps.files.ghostty.org/zigimg-c701c9f99779d7ddf594dcc6da8f858fd277d61f.tar.gz";
+      hash = "sha256-1Qye38dmT8tgqOmc36pVKY8idDEOVlCeFCT6QDTYlbw=";
     };
     "N-V-__8AAB0eQwD-0MdOEBmz7intriBReIsIDNlukNVoNu6o" = fetchzip {
       name = "zlib";

@@ -129,8 +129,10 @@ pub const StreamHandler = struct {
         self.terminal.setDefaultCursorBlink(config.cursor_blink);
         self.terminal.setDefaultXtChecksum(config.xt_checksum_extension);
 
-        // The config could have changed any of our colors so update mode 2031
-        self.messageWriter(.{ .color_scheme_report = .{ .force = false } });
+        // The config could have changed any of our colors, but the mode
+        // 2031 report is sent by Termio.changeConfig. This runs on the io
+        // thread, which is the only reader of the termio mailbox, so
+        // sending to it here would deadlock if the mailbox were full.
     }
 
     inline fn surfaceMessageWriter(
@@ -264,6 +266,8 @@ pub const StreamHandler = struct {
             .erase_chars => self.terminal.eraseChars(value),
             .insert_lines => self.terminal.insertLines(value),
             .insert_blanks => self.terminal.insertBlanks(value),
+            .insert_columns => self.terminal.insertColumns(value),
+            .delete_columns => self.terminal.deleteColumns(value),
             .delete_lines => self.terminal.deleteLines(value),
             .scroll_up => try self.terminal.scrollUp(value),
             .scroll_down => self.terminal.scrollDown(value),
@@ -274,6 +278,8 @@ pub const StreamHandler = struct {
             .index => try self.index(),
             .next_line => try self.nextLine(),
             .reverse_index => try self.reverseIndex(),
+            .back_index => self.terminal.backIndex(),
+            .forward_index => self.terminal.forwardIndex(),
             .full_reset => try self.fullReset(),
             .soft_reset => self.terminal.softReset(),
             .set_mode => try self.setMode(value.mode, true),

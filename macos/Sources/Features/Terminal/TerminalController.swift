@@ -180,7 +180,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // Update our zoom state
         if let window = window as? TerminalWindow {
-            window.surfaceIsZoomed = to.zoomed != nil
+            window.surfaceIsZoomed = to.isZoomed
         }
 
         // If our surface tree is now nil then we close our window.
@@ -666,7 +666,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         guard let window = window as? TerminalWindow else { return }
 
         // Sync our zoom state for splits
-        window.surfaceIsZoomed = surfaceTree.zoomed != nil
+        window.surfaceIsZoomed = surfaceTree.isZoomed
 
         // Set the font for the window and tab titles.
         if let titleFontName = surfaceConfig.windowTitleFontFamily {
@@ -1661,10 +1661,32 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // Reproduction: titlebar tabs, create two tabs, "move tab left"
         if #available(macOS 26, *) {
             if tab is TitlebarTabsTahoeTerminalWindow {
-                tabGroup.removeWindow(tab)
-                target.addTabbedWindowSafely(tab, ordered: ordered)
-                DispatchQueue.main.async {
-                    selected.makeKey()
+                if tab === selected {
+                    // Move the tabs we pass over to the other side of our tab
+                    // instead of moving our tab: removing the selected tab makes
+                    // AppKit briefly show a neighbor.
+                    let windows = tabGroup.windows
+                    guard let from = windows.firstIndex(of: tab) else { return }
+                    let rest = windows.filter { $0 !== tab }
+                    guard let targetIndex = rest.firstIndex(of: target) else { return }
+                    let to = targetIndex + (ordered == .above ? 1 : 0)
+                    if to < from {
+                        for passed in rest[to..<from].reversed() {
+                            tabGroup.removeWindow(passed)
+                            tab.addTabbedWindowSafely(passed, ordered: .above)
+                        }
+                    } else {
+                        for passed in rest[from..<to] {
+                            tabGroup.removeWindow(passed)
+                            tab.addTabbedWindowSafely(passed, ordered: .below)
+                        }
+                    }
+                } else {
+                    tabGroup.removeWindow(tab)
+                    target.addTabbedWindowSafely(tab, ordered: ordered)
+                    DispatchQueue.main.async {
+                        selected.makeKey()
+                    }
                 }
 
                 return
