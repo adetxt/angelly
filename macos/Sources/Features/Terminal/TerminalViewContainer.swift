@@ -125,9 +125,10 @@ class TerminalViewContainer: NSView {
         tabSidebarWidth = width
         tabBar = bar
         tabBarHeight = height
-        tabSidebarCancellable = TabSidebarState.shared.$isVisible.sink { [weak self] visible in
+        let state = TabSidebarState.shared
+        tabSidebarCancellable = state.$isVisible.combineLatest(state.$width).sink { [weak self] visible, sidebarWidth in
             self?.tabSidebar?.isHidden = !visible
-            self?.tabSidebarWidth?.constant = visible ? TabSidebarState.width : 0
+            self?.tabSidebarWidth?.constant = visible ? sidebarWidth : 0
             self?.tabBar?.isHidden = visible
             self?.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
             self?.invalidateIntrinsicContentSize()
