@@ -7,14 +7,28 @@ import UniformTypeIdentifiers
 /// tab bar in every terminal window at once, so the preference is global and persisted.
 final class TabSidebarState: ObservableObject {
     static let shared = TabSidebarState()
-    static let width: CGFloat = 220
+    static let defaultWidth: CGFloat = 220
+    static let widthRange: ClosedRange<CGFloat> = 160...480
 
     private static let defaultsKey = "TabSidebar"
+    private static let widthKey = "TabSidebarWidth"
 
     @Published private(set) var isVisible: Bool
+    @Published private(set) var width: CGFloat
 
     private init() {
         isVisible = UserDefaults.ghostty.object(forKey: Self.defaultsKey) as? Bool ?? true
+        let stored = UserDefaults.ghostty.object(forKey: Self.widthKey) as? Double
+        width = stored.map { Self.clamp(CGFloat($0)) } ?? Self.defaultWidth
+    }
+
+    func setWidth(_ newWidth: CGFloat) {
+        width = Self.clamp(newWidth)
+        UserDefaults.ghostty.set(Double(width), forKey: Self.widthKey)
+    }
+
+    private static func clamp(_ width: CGFloat) -> CGFloat {
+        min(max(width, widthRange.lowerBound), widthRange.upperBound)
     }
 
     func toggle() {
@@ -52,6 +66,8 @@ struct TabSidebarToggleButton: View {
 
 struct TabSidebarView: View {
     @ObservedObject var model: TerminalTabModel
+    @ObservedObject private var state = TabSidebarState.shared
+    @State private var dragStartWidth: CGFloat?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,7 +92,7 @@ struct TabSidebarView: View {
                 .animation(.easeInOut(duration: 0.18), value: model.rows.map(\.id))
             }
         }
-        .frame(width: TabSidebarState.width)
+        .frame(width: state.width)
         .frame(maxHeight: .infinity)
         .background(Color.primary.opacity(0.045))
         .accessibilityElement(children: .contain)
@@ -86,6 +102,27 @@ struct TabSidebarView: View {
                 .fill(Color.primary.opacity(0.1))
                 .frame(width: 1)
         }
+        .overlay(alignment: .trailing) { resizeHandle }
+    }
+
+    /// Dragged in window coordinates: the handle moves with the width it is changing, so
+    /// a local translation would feed back into itself.
+    private var resizeHandle: some View {
+        Color.clear
+            .frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = dragStartWidth ?? state.width
+                        dragStartWidth = start
+                        state.setWidth(start + value.translation.width)
+                    }
+                    .onEnded { _ in dragStartWidth = nil })
+            .accessibilityHidden(true)
     }
 
     private var header: some View {
@@ -139,7 +176,7 @@ private struct TabSidebarRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Capsule()
-                .fill(item.color ?? (item.isSelected ? Color.accentColor : .clear))
+                .fill(item.color ?? (item.isSelected && item.group == nil ? Color.accentColor : .clear))
                 .frame(width: 3, height: 14)
 
             Text(item.title)

@@ -211,7 +211,8 @@ final class TerminalTabModel: ObservableObject {
                 id: ObjectIdentifier(tab),
                 window: tab,
                 title: tab.title.isEmpty ? "Terminal" : tab.title,
-                color: (tab as? TerminalWindow)?.tabColor.displayColor.map(Color.init(nsColor:)),
+                // A grouped tab shows its group's color instead of its own.
+                color: info == nil ? (tab as? TerminalWindow)?.tabColor.displayColor.map(Color.init(nsColor:)) : nil,
                 shortcut: shortcut,
                 hasBell: (tab.windowController as? BaseTerminalController)?.bell ?? false,
                 isSelected: tab === selected,
