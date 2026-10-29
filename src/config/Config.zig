@@ -3987,11 +3987,10 @@ term: []const u8 = "xterm-ghostty",
 ///  * `download` - Check for updates, automatically download the update,
 ///    notify the user, but do not automatically install the update.
 ///
-/// If unset, we defer to Sparkle's default behavior, which respects the
-/// preference stored in the standard user defaults (`defaults(1)`).
+/// If unset, this defaults to `check`.
 ///
 /// Changing this value at runtime works after a small delay.
-@"auto-update": ?AutoUpdate = null,
+@"auto-update": ?AutoUpdate = .check,
 
 /// The release channel to use for auto-updates.
 ///

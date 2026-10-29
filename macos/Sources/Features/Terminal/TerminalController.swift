@@ -58,6 +58,9 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// The configuration derived from the Ghostty config so we don't need to rely on references.
     private(set) var derivedConfig: DerivedConfig
 
+    /// The model behind this window's tab sidebar and tab bar, if they're installed.
+    private(set) var tabModel: TerminalTabModel?
+
     /// The notification cancellable for focused surface property changes.
     private var surfaceAppearanceCancellables: Set<AnyCancellable> = []
 
@@ -416,6 +419,23 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         return c
     }
 
+    /// Where a new tab opens: behind `anchor`, in sidebar group `group` (if any).
+    ///
+    /// A tab created from inside a group always joins that group, so `end` means the
+    /// end of the group's run and the group stays contiguous. To open a tab outside
+    /// a group, create it from a tab that isn't in one.
+    static func newTabPlacement(
+        parent: NSWindow,
+        position: String
+    ) -> (anchor: NSWindow, group: UUID?) {
+        let group = (parent as? TerminalWindow)?.sidebarGroup
+        guard position == "end" else { return (parent, group) }
+
+        let tabs = parent.tabGroup?.windows ?? [parent]
+        let anchor = tabs.last { group == nil || ($0 as? TerminalWindow)?.sidebarGroup == group }
+        return (anchor ?? parent, group)
+    }
+
     static func newTab(
         _ ghostty: Ghostty.App,
         from parent: NSWindow? = nil,
@@ -464,9 +484,10 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // If we don't allow tabs then we create a new window instead.
         if window.tabbingMode != .disallowed {
-            // Append outside sidebar groups so creating a tab never splits a group.
-            let last = parent.tabGroup?.windows.last ?? parent
-            let tabCreated = last.addTabbedWindowSafely(window, ordered: .above)
+            let placement = newTabPlacement(
+                parent: parent, position: ghostty.config.windowNewTabPosition)
+            (window as? TerminalWindow)?.sidebarGroup = placement.group
+            let tabCreated = placement.anchor.addTabbedWindowSafely(window, ordered: .above)
             if tabCreated {
                 // We set the selectedWindow early here because we want the next window
                 // to become first responder as quickly as possible. Usually this is
@@ -475,6 +496,10 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 parent.tabGroup?.selectedWindow = window
             }
         }
+
+        // The tab list otherwise fills in a turn after the window shows: first an
+        // empty list, then every row fading in.
+        controller.tabModel?.refresh()
 
         // showWindow makes regular windows key and ordered front. AppKit can
         // throw while selecting a tab if its fullscreen stack is inconsistent,
@@ -1125,7 +1150,9 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // Custom tab layouts share the same native windows for every decorated style.
         if config.windowDecorations {
             (window as? TitlebarTabsVenturaTerminalWindow)?.titlebarTabs = false
-            container.installTabViews(TerminalTabModel(window: window, ghostty: ghostty))
+            let model = TerminalTabModel(window: window, ghostty: ghostty)
+            tabModel = model
+            container.installTabViews(model)
         }
 
         window.contentView = container

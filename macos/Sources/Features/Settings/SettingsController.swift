@@ -92,6 +92,10 @@ class SettingsModel: ObservableObject {
         ghostty.openConfig()
     }
 
+    func checkForUpdates() {
+        (NSApp.delegate as? AppDelegate)?.checkForUpdates(nil)
+    }
+
     private static func monospaceFontFamilies() -> [String] {
         let names = NSFontManager.shared.availableFontNames(with: .fixedPitchFontMask) ?? []
         let families = Set(names.compactMap { NSFont(name: $0, size: 12)?.familyName })

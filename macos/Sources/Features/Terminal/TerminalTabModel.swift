@@ -196,13 +196,18 @@ final class TerminalTabModel: ObservableObject {
         let group = window.tabGroup
         observe(group)
 
+        // Only the selected tab's list is on screen. Refreshing every tab's model would make
+        // each new tab re-render every other tab's hidden list first, delaying its own.
+        // A tab refreshes when it becomes selected.
+        let selected = group?.selectedWindow ?? window
+        guard selected === window else { return }
+
         // Publishes only when a group lost its last tab, so this can't loop back here.
         let store = TabGroupStore.shared
         store.prune()
         let groups = store.groups
 
-        let selected = group?.selectedWindow ?? window
-        items = (group?.windows ?? [window]).enumerated().map { index, tab in
+        let newItems: [Item] = (group?.windows ?? [window]).enumerated().map { index, tab in
             let shortcut = index < 9
                 ? ghostty.config.keyboardShortcut(for: "goto_tab:\(index + 1)").map { "\($0)" }
                 : nil
@@ -219,7 +224,21 @@ final class TerminalTabModel: ObservableObject {
                 group: info == nil ? nil : (tab as? TerminalWindow)?.sidebarGroup,
                 groupColor: info?.color.displayColor.map(Color.init(nsColor:)))
         }
-        rows = Self.rows(for: items, groups: groups)
+        let newRows = Self.rows(for: newItems, groups: groups)
+
+        // A list that has never shown anything appears at once; fading in every row would
+        // flash an empty list when a new tab opens.
+        if rows.isEmpty {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                items = newItems
+                rows = newRows
+            }
+        } else {
+            items = newItems
+            rows = newRows
+        }
     }
 
     private static func rows(for items: [Item], groups: [UUID: TabGroupStore.Info]) -> [Row] {
