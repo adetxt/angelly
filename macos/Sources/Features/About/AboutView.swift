@@ -3,7 +3,8 @@ import SwiftUI
 struct AboutView: View {
     @Environment(\.openURL) var openURL
 
-    private let githubURL = URL(string: "https://github.com/ghostty-org/ghostty")
+    private let githubURL = URL(string: "https://github.com/adetxt/angelly")
+    private let ghosttyURL = URL(string: "https://github.com/ghostty-org/ghostty")
     private let docsURL = URL(string: "https://ghostty.org/docs")
 
     /// Read the commit from the bundle.
@@ -33,8 +34,7 @@ struct AboutView: View {
         var url: URL? {
             switch self {
             case .stable(let version):
-                let slug = version.replacingOccurrences(of: ".", with: "-")
-                return URL(string: "https://ghostty.org/docs/install/release-notes/\(slug)")
+                return URL(string: "https://github.com/adetxt/angelly/releases/tag/v\(version)")
             default:
                 return nil
             }
@@ -78,15 +78,13 @@ struct AboutView: View {
 
             VStack(alignment: .center, spacing: 32) {
                 VStack(alignment: .center, spacing: 8) {
-                    Text("Ghostty")
+                    Text("Angelly")
                         .bold()
                         .font(.title)
-                    Text("Fast, native, feature-rich terminal \nemulator pushing modern features.")
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .font(.caption)
-                        .tint(.secondary)
-                        .opacity(0.8)
+                    if let url = ghosttyURL {
+                        Link("Powered by Ghostty", destination: url)
+                            .font(.caption)
+                    }
                 }
                 .textSelection(.enabled)
 
