@@ -5,44 +5,97 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct TerminalControllerTests {
-    @Test(arguments: [(true, false), (true, true), (false, true)])
-    func newTabAppendsOutsideSidebarGroups(activeGrouped: Bool, lastGrouped: Bool) throws {
-        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
-        try #require(ghostty.config.windowNewTabPosition == "current")
-        let first = TerminalController(ghostty)
-        var controllers = [first]
-        defer {
+    /// Four tabs: `[a, b, c, d]` with `b` and `c` in a sidebar group.
+    @MainActor
+    private struct Fixture {
+        let ghostty: Ghostty.App
+        let windows: [TerminalWindow]
+        let group: UUID
+        var controllers: [TerminalController]
+
+        init() throws {
+            ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+            try #require(ghostty.config.windowNewTabPosition == "current")
+
+            var controllers = [TerminalController(ghostty)]
+            var windows = [try #require(controllers[0].window as? TerminalWindow)]
+            for _ in 0..<3 {
+                let next = try #require(TerminalController.newTab(ghostty, from: windows.last))
+                controllers.append(next)
+                windows.append(try #require(next.window as? TerminalWindow))
+            }
+
+            group = UUID()
+            windows[1].sidebarGroup = group
+            windows[2].sidebarGroup = group
+            TabGroupStore.shared.restore(.init(
+                id: group, info: .init(name: "Test", color: .blue, isCollapsed: false)))
+            self.windows = windows
+            self.controllers = controllers
+        }
+
+        func tearDown() {
+            TabGroupStore.shared.remove(group)
             for controller in controllers.reversed() {
                 controller.closeWindowImmediately()
             }
         }
+    }
 
-        let firstWindow = try #require(first.window as? TerminalWindow)
-        let second = try #require(TerminalController.newTab(ghostty, from: firstWindow))
-        controllers.append(second)
-        let secondWindow = try #require(second.window as? TerminalWindow)
-        let third = try #require(TerminalController.newTab(ghostty, from: secondWindow))
-        controllers.append(third)
-        let thirdWindow = try #require(third.window as? TerminalWindow)
+    @Test(arguments: [("current", 2), ("end", 3)])
+    func placementFromGroupJoinsTheGroup(position: String, anchor: Int) throws {
+        let fixture = try Fixture()
+        defer { fixture.tearDown() }
 
-        let group = UUID()
-        firstWindow.sidebarGroup = activeGrouped ? group : nil
-        secondWindow.sidebarGroup = group
-        thirdWindow.sidebarGroup = lastGrouped ? group : nil
-        TabGroupStore.shared.restore(.init(
-            id: group, info: .init(name: "Test", color: .blue, isCollapsed: false)))
-        defer { TabGroupStore.shared.remove(group) }
-        firstWindow.tabGroup?.selectedWindow = firstWindow
+        let placement = TerminalController.newTabPlacement(
+            parent: fixture.windows[1], position: position)
 
-        let created = try #require(TerminalController.newTab(ghostty, from: firstWindow))
-        controllers.append(created)
-        let createdWindow = try #require(created.window as? TerminalWindow)
+        #expect(placement.anchor === fixture.windows[anchor - 1])
+        #expect(placement.group == fixture.group)
+    }
 
-        #expect(firstWindow.tabGroup?.windows == [firstWindow, secondWindow, thirdWindow, createdWindow])
-        #expect(firstWindow.tabGroup?.selectedWindow === createdWindow)
-        #expect(createdWindow.sidebarGroup == nil)
-        #expect(firstWindow.sidebarGroup == (activeGrouped ? group : nil))
-        #expect(secondWindow.sidebarGroup == group)
-        #expect(thirdWindow.sidebarGroup == (lastGrouped ? group : nil))
+    @Test(arguments: [("current", 0, 0), ("end", 0, 3), ("current", 3, 3), ("end", 3, 3)])
+    func placementFromUngroupedTabStaysOutside(position: String, parent: Int, anchor: Int) throws {
+        let fixture = try Fixture()
+        defer { fixture.tearDown() }
+
+        let placement = TerminalController.newTabPlacement(
+            parent: fixture.windows[parent], position: position)
+
+        #expect(placement.anchor === fixture.windows[anchor])
+        #expect(placement.group == nil)
+    }
+
+    @Test func newTabFromGroupOpensBesideCurrentAndJoins() throws {
+        var fixture = try Fixture()
+        defer { fixture.tearDown() }
+        let (a, b, c, d) = (fixture.windows[0], fixture.windows[1], fixture.windows[2], fixture.windows[3])
+        b.tabGroup?.selectedWindow = b
+
+        let created = try #require(TerminalController.newTab(fixture.ghostty, from: b))
+        fixture.controllers.append(created)
+        let new = try #require(created.window as? TerminalWindow)
+
+        #expect(b.tabGroup?.windows == [a, b, new, c, d])
+        #expect(b.tabGroup?.selectedWindow === new)
+        #expect(new.sidebarGroup == fixture.group)
+        #expect(a.sidebarGroup == nil)
+        #expect(d.sidebarGroup == nil)
+    }
+
+    @Test func newTabFromUngroupedTabOpensOutsideTheGroup() throws {
+        var fixture = try Fixture()
+        defer { fixture.tearDown() }
+        let (a, b, c, d) = (fixture.windows[0], fixture.windows[1], fixture.windows[2], fixture.windows[3])
+        a.tabGroup?.selectedWindow = a
+
+        let created = try #require(TerminalController.newTab(fixture.ghostty, from: a))
+        fixture.controllers.append(created)
+        let new = try #require(created.window as? TerminalWindow)
+
+        #expect(a.tabGroup?.windows == [a, new, b, c, d])
+        #expect(new.sidebarGroup == nil)
+        #expect(b.sidebarGroup == fixture.group)
+        #expect(c.sidebarGroup == fixture.group)
     }
 }

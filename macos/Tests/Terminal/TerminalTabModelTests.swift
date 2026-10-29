@@ -29,7 +29,7 @@ struct TerminalTabModelTests {
         let fixture = try Fixture()
         defer { fixture.close() }
         let group = fixture.group([0, 1])
-        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[1]
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[0]
         fixture.model.toggleCollapsed(group)
         fixture.model.refresh()
         #expect(fixture.model.rows.count == 3)
