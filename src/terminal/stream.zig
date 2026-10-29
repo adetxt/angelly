@@ -138,6 +138,10 @@ pub const Action = union(Key) {
     xt_checksum_extension: XtChecksumExtension,
     program_status: ProgramStatus,
     soft_reset,
+    back_index,
+    forward_index,
+    insert_columns: usize,
+    delete_columns: usize,
 
     pub const Key = lib.Enum(
         lib.target,
@@ -246,6 +250,10 @@ pub const Action = union(Key) {
             "xt_checksum_extension",
             "program_status",
             "soft_reset",
+            "back_index",
+            "forward_index",
+            "insert_columns",
+            "delete_columns",
         },
     );
 
@@ -310,8 +318,27 @@ pub const Action = union(Key) {
         }
     };
 
+    /// Sent when an APC string ends, for any reason.
+    ///
+    /// An APC is only complete when it ends with the string terminator,
+    /// either `ESC \` or the 8-bit 0x9C. A program can also stop an APC
+    /// partway through. CAN (0x18) or SUB (0x1A) cancels it, and any other
+    /// 8-bit control byte, such as CSI (0x9B), aborts it. ECMA-48 says a
+    /// string stopped this way must be thrown away, so a handler should
+    /// only act on the APC when `terminated` is true.
+    ///
+    /// ```zig
+    /// .apc_end => |value| {
+    ///     var cmd = apc_handler.end() orelse return;
+    ///     defer cmd.deinit(alloc);
+    ///     if (!value.terminated) return;
+    ///     run(cmd);
+    /// },
+    /// ```
     pub const ApcEnd = extern struct {
-        /// False when CAN, SUB, or another aborting transition ended the APC.
+        /// True when the string terminator ended the APC. False when the
+        /// APC was cancelled or aborted, in which case its contents
+        /// should be discarded.
         terminated: bool,
     };
 
@@ -2776,13 +2803,36 @@ pub fn Stream(comptime H: type) type {
                     ),
                 },
 
-                // DECSASD - Select Active Status Display
                 '}' => decsasd: {
-                    // Verify we're getting a DECSASD command
-                    if (input.intermediates.len != 1 or input.intermediates[0] != '$') {
+                    if (input.intermediates.len != 1) {
                         log.warn("unimplemented CSI callback: {f}", .{input});
                         break :decsasd;
                     }
+
+                    switch (input.intermediates[0]) {
+                        // DECSASD - Select Active Status Display
+                        '$' => {},
+
+                        // DECIC - Insert Column
+                        '\'' => {
+                            self.handler.vt(.insert_columns, switch (input.params.len) {
+                                0 => 1,
+                                1 => @max(1, input.params[0]),
+                                else => {
+                                    @branchHint(.unlikely);
+                                    log.warn("invalid DECIC command: {f}", .{input});
+                                    break :decsasd;
+                                },
+                            });
+                            break :decsasd;
+                        },
+
+                        else => {
+                            log.warn("unimplemented CSI callback: {f}", .{input});
+                            break :decsasd;
+                        },
+                    }
+
                     if (input.params.len != 1) {
                         log.warn("unimplemented CSI callback: {f}", .{input});
                         break :decsasd;
@@ -2798,6 +2848,25 @@ pub fn Stream(comptime H: type) type {
                     };
 
                     self.handler.vt(.active_status_display, display);
+                },
+
+                // DECDC - Delete Column
+                '~' => switch (input.intermediates.len) {
+                    1 => switch (input.intermediates[0]) {
+                        '\'' => self.handler.vt(.delete_columns, switch (input.params.len) {
+                            0 => 1,
+                            1 => @max(1, input.params[0]),
+                            else => {
+                                @branchHint(.unlikely);
+                                log.warn("invalid DECDC command: {f}", .{input});
+                                return;
+                            },
+                        }),
+
+                        else => log.warn("unimplemented CSI action: {f}", .{input}),
+                    },
+
+                    else => log.warn("unimplemented CSI action: {f}", .{input}),
                 },
 
                 else => log.warn("unimplemented CSI action: {f}", .{input}),
@@ -3069,6 +3138,26 @@ pub fn Stream(comptime H: type) type {
                         .{action},
                         action.final,
                     );
+                },
+
+                // DECBI - Back Index
+                '6' => switch (action.intermediates.len) {
+                    0 => self.handler.vt(.back_index, {}),
+                    else => {
+                        @branchHint(.unlikely);
+                        log.warn("invalid back index command: {f}", .{action});
+                        return;
+                    },
+                },
+
+                // DECFI - Forward Index
+                '9' => switch (action.intermediates.len) {
+                    0 => self.handler.vt(.forward_index, {}),
+                    else => {
+                        @branchHint(.unlikely);
+                        log.warn("invalid forward index command: {f}", .{action});
+                        return;
+                    },
                 },
 
                 // IND - Index
@@ -4735,6 +4824,68 @@ test "stream: insert characters explicit zero clamps to 1" {
     var s: Stream(H) = .init(.{ .handler = .{} });
     for ("\x1B[0@") |c| s.next(c);
     try testing.expectEqual(@as(usize, 1), s.handler.value.?);
+}
+
+test "stream: DECIC and DECDC" {
+    const H = struct {
+        const Self = @This();
+        insert: ?usize = null,
+        delete: ?usize = null,
+
+        pub fn vt(
+            self: *Self,
+            comptime action: anytype,
+            value: anytype,
+        ) void {
+            switch (action) {
+                .insert_columns => self.insert = value,
+                .delete_columns => self.delete = value,
+                else => {},
+            }
+        }
+    };
+
+    var s: Stream(H) = .init(.{ .handler = .{} });
+    for ("\x1B['}") |c| s.next(c);
+    try testing.expectEqual(@as(usize, 1), s.handler.insert.?);
+    for ("\x1B[3'}") |c| s.next(c);
+    try testing.expectEqual(@as(usize, 3), s.handler.insert.?);
+    for ("\x1B[0'~") |c| s.next(c);
+    try testing.expectEqual(@as(usize, 1), s.handler.delete.?);
+    for ("\x1B[5'~") |c| s.next(c);
+    try testing.expectEqual(@as(usize, 5), s.handler.delete.?);
+
+    // Without the intermediate these are other sequences.
+    s.handler = .{};
+    for ("\x1B[3}\x1B[3~") |c| s.next(c);
+    try testing.expect(s.handler.insert == null);
+    try testing.expect(s.handler.delete == null);
+}
+
+test "stream: DECBI and DECFI" {
+    const H = struct {
+        const Self = @This();
+        back: usize = 0,
+        forward: usize = 0,
+
+        pub fn vt(
+            self: *Self,
+            comptime action: anytype,
+            value: anytype,
+        ) void {
+            _ = value;
+            switch (action) {
+                .back_index => self.back += 1,
+                .forward_index => self.forward += 1,
+                else => {},
+            }
+        }
+    };
+
+    var s: Stream(H) = .init(.{ .handler = .{} });
+    for ("\x1B6\x1B9\x1B9") |c| s.next(c);
+    try testing.expectEqual(@as(usize, 1), s.handler.back);
+    try testing.expectEqual(@as(usize, 2), s.handler.forward);
 }
 
 test "stream: SCOSC" {
@@ -6892,8 +7043,9 @@ test "stream: continuation suffixes are replay safe" {
         .{ .input = "text\x1b[12\x1b", .expected = "\x1b" },
         .{
             .input = "text\x1b[12\x9D2;title",
-            .expected = "\x1b[12\x9D2;title",
+            .expected = "\x1b]2;title",
         },
+        .{ .input = "text\x1b_Gabc\x9B1", .expected = "\x1b[1" },
     };
 
     const S = Stream(ContinuationTestHandler);

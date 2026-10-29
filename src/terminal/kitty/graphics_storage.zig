@@ -154,7 +154,12 @@ pub const ImageStorage = struct {
     /// The set of placements for loaded images.
     placements: PlacementMap = .{},
 
-    /// Non-null if there is an in-progress loading image.
+    /// The chunked image or animation frame load that is in progress,
+    /// or null if there isn't one.
+    ///
+    /// A load starts when a direct (t=d) transmission arrives with m=1
+    /// and ends when its final chunk (m=0) arrives. It is abandoned early
+    /// by a delete command or by a transmission that uses another medium.
     loading: ?*LoadingImage = null,
 
     /// The limits of what medium types are allowed for image loading.
@@ -751,6 +756,47 @@ pub const ImageStorage = struct {
         // children if this was a parent.
         _ = self.removeOrphans(s, null);
 
+        self.markMutated(io);
+    }
+
+    /// Remove pin-backed placements anchored in the history rows that
+    /// `Screen.eraseHistory` is about to erase, from the top of history
+    /// through `bl` (or all of history if null), along with any relative
+    /// placements orphaned by that. This must be called before the rows
+    /// are erased: afterward, the tracked pins have been moved to the
+    /// top-left of the retained rows and are indistinguishable from
+    /// placements that were already there.
+    pub fn eraseHistory(
+        self: *ImageStorage,
+        io: std.Io,
+        s: *terminal.Screen,
+        bl: ?point.Point,
+    ) void {
+        const history_rows = s.pages.total_rows - s.pages.rows;
+        if (history_rows == 0) return;
+        const limit: usize = limit: {
+            const pt = bl orelse break :limit history_rows - 1;
+            const bl_pin = s.pages.pin(pt) orelse return;
+            const bl_pt = s.pages.pointFromPin(.history, bl_pin) orelse return;
+            break :limit bl_pt.coord().y;
+        };
+
+        var removed = false;
+        var it = self.placements.iterator();
+        while (it.next()) |entry| {
+            const pin = switch (entry.value_ptr.location) {
+                .pin => |pin| pin,
+                .virtual, .relative => continue,
+            };
+            const pt = s.pages.pointFromPin(.history, pin.*) orelse continue;
+            if (pt.coord().y > limit) continue;
+
+            self.removePlacement(s, entry);
+            removed = true;
+        }
+        if (!removed) return;
+
+        _ = self.removeOrphans(s, null);
         self.markMutated(io);
     }
 
@@ -3236,6 +3282,79 @@ test "storage: erase display preserves scrollback and reclaims unplaced images" 
     try testing.expect(s.images.contains(1));
     try testing.expect(!s.images.contains(2));
     try testing.expect(!s.images.contains(3));
+}
+
+test "storage: erase scrollback removes placements in history" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+    var t = try terminal.Terminal.init(io, alloc, .{
+        .rows = 2,
+        .cols = 2,
+        .max_scrollback_bytes = 4096,
+    });
+    defer t.deinit(alloc);
+    t.width_px = 2;
+    t.height_px = 2;
+
+    const s = &t.screens.active.kitty_images;
+    try s.addImage(io, alloc, t.screens.active, .{ .id = 1, .width = 1, .height = 1 });
+    try s.addPlacement(io, alloc, t.screens.active, 1, 1, .{
+        .location = .{ .pin = try trackPin(&t, .{ .y = 0 }) },
+    });
+    try t.scrollUp(1);
+    try s.addImage(io, alloc, t.screens.active, .{ .id = 2, .width = 1, .height = 1 });
+    try s.addPlacement(io, alloc, t.screens.active, 2, 1, .{
+        .location = .{ .pin = try trackPin(&t, .{ .y = 0 }) },
+    });
+
+    // Erasing history must not move the history placement onto the
+    // top of the active area, where it would be visible again.
+    t.eraseDisplay(.scrollback, false);
+    try testing.expectEqual(@as(usize, 1), s.placements.count());
+    try testing.expect(s.placements.contains(.{
+        .image_id = 2,
+        .placement_id = .{ .tag = .external, .id = 1 },
+    }));
+}
+
+test "storage: partial history erase keeps later history placements" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+    var t = try terminal.Terminal.init(io, alloc, .{
+        .rows = 2,
+        .cols = 2,
+        .max_scrollback_bytes = 4096,
+    });
+    defer t.deinit(alloc);
+    t.width_px = 2;
+    t.height_px = 2;
+
+    const s = &t.screens.active.kitty_images;
+    try s.addImage(io, alloc, t.screens.active, .{ .id = 1, .width = 1, .height = 1 });
+    try s.addPlacement(io, alloc, t.screens.active, 1, 1, .{
+        .location = .{ .pin = try trackPin(&t, .{ .y = 0 }) },
+    });
+    try s.addImage(io, alloc, t.screens.active, .{ .id = 2, .width = 1, .height = 1 });
+    try s.addPlacement(io, alloc, t.screens.active, 2, 1, .{
+        .location = .{ .pin = try trackPin(&t, .{ .y = 1 }) },
+    });
+    try t.scrollUp(2);
+
+    t.screens.active.eraseHistory(.{ .history = .{ .y = 0 } });
+    try testing.expectEqual(@as(usize, 1), s.placements.count());
+    const key: ImageStorage.PlacementKey = .{
+        .image_id = 2,
+        .placement_id = .{ .tag = .external, .id = 1 },
+    };
+    try testing.expectEqual(
+        point.Point{ .history = .{ .x = 0, .y = 0 } },
+        t.screens.active.pages.pointFromPin(
+            .history,
+            s.placements.get(key).?.location.pin.*,
+        ).?,
+    );
 }
 
 test "storage: cell offsets stay within explicit destination rectangle" {

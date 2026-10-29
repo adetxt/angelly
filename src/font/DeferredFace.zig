@@ -44,7 +44,11 @@ pub const Fontconfig = struct {
     /// presentation style are supported. They can be derived from pattern
     /// but are cached since they're frequently used.
     charset: *const fontconfig.CharSet,
-    langset: *const fontconfig.LangSet,
+
+    /// Fontconfig views strings and langsets as interchangeable and
+    /// may return either (really bad design if you ask me) as its public API.
+    /// Therefore we can't assume this is always a `*const fontconfig.LangSet`.
+    langset: fontconfig.Value,
 
     /// Variations to apply to this font.
     variations: []const font.face.Variation,
@@ -335,10 +339,15 @@ pub fn hasCodepoint(self: DeferredFace, cp: u32, p: ?Presentation) bool {
                 // If we have a presentation, check it matches
                 if (p) |desired| {
                     const emoji_lang = "und-zsye";
-                    const actual: Presentation = if (fc.langset.hasLang(emoji_lang))
-                        .emoji
-                    else
-                        .text;
+                    const is_emoji = switch (fc.langset) {
+                        .lang_set => |ls| ls.hasLang(emoji_lang),
+                        .string => |s| std.mem.eql(u8, s, emoji_lang),
+                        else => |v| v: {
+                            log.warn("fontconfig's pattern lang is neither a lang set or a string={}", .{v});
+                            break :v false;
+                        },
+                    };
+                    const actual: Presentation = if (is_emoji) .emoji else .text;
 
                     return desired == actual;
                 }

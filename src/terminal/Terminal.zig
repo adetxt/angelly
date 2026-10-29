@@ -279,6 +279,8 @@ pub const Cursor = struct {
 };
 
 pub const Options = struct {
+    /// The size of the terminal grid in cells. Both must be at least 1,
+    /// otherwise `init` returns `error.InvalidValue`.
     cols: size.CellCountInt,
     rows: size.CellCountInt,
 
@@ -325,7 +327,20 @@ pub const Options = struct {
         void = if (build_options.kitty_graphics) .direct else {},
 };
 
-/// Initialize a new terminal.
+/// Initialize a new terminal with the given options.
+///
+/// The returned terminal owns its memory. Call `deinit` with the same
+/// allocator when you are done with it.
+///
+/// ```zig
+/// var t: Terminal = try .init(io, alloc, .{ .cols = 80, .rows = 24 });
+/// defer t.deinit(alloc);
+/// ```
+///
+/// Returns `error.InvalidValue` if `cols` or `rows` is zero. This check
+/// happens before anything is allocated. If the size comes from an
+/// untrusted source, you can rely on this check instead of validating
+/// it yourself.
 pub fn init(
     io_impl: std.Io,
     alloc: Allocator,
@@ -333,6 +348,10 @@ pub fn init(
 ) !Terminal {
     const cols = opts.cols;
     const rows = opts.rows;
+
+    // The screens and scrolling region need at least one row and column.
+    // Check this before allocating so there is nothing to clean up.
+    if (cols == 0 or rows == 0) return error.InvalidValue;
 
     var screen_set: ScreenSet = try .init(io_impl, alloc, .{
         .cols = cols,
@@ -3533,6 +3552,98 @@ pub fn deleteChars(self: *Terminal, count_req: usize) void {
     self.screens.active.cursorMarkDirty();
 }
 
+/// DECIC - Insert Column. Inserts count blank columns at the cursor
+/// column in every row of the scrolling region, moving existing cell
+/// contents to the right. The contents of the count right-most columns
+/// in the scroll region are lost. The cursor position is not changed.
+///
+/// This does nothing if the cursor is outside the scrolling region.
+pub fn insertColumns(self: *Terminal, count: usize) void {
+    if (!self.cursorInScrollingRegion()) return;
+
+    const old_x = self.screens.active.cursor.x;
+    const old_y = self.screens.active.cursor.y;
+    defer self.screens.active.cursorAbsolute(old_x, old_y);
+
+    var y = self.scrolling_region.top;
+    while (y <= self.scrolling_region.bottom) : (y += 1) {
+        self.screens.active.cursorAbsolute(old_x, y);
+        self.insertBlanks(count);
+    }
+}
+
+/// DECDC - Delete Column. Deletes count columns starting at the cursor
+/// column in every row of the scrolling region, moving the remaining
+/// cell contents to the left and filling from the right margin with
+/// blanks. The cursor position is not changed.
+///
+/// This does nothing if the cursor is outside the scrolling region.
+pub fn deleteColumns(self: *Terminal, count: usize) void {
+    if (!self.cursorInScrollingRegion()) return;
+
+    const old_x = self.screens.active.cursor.x;
+    const old_y = self.screens.active.cursor.y;
+    defer self.screens.active.cursorAbsolute(old_x, old_y);
+
+    var y = self.scrolling_region.top;
+    while (y <= self.scrolling_region.bottom) : (y += 1) {
+        self.screens.active.cursorAbsolute(old_x, y);
+        self.deleteChars(count);
+    }
+}
+
+/// DECBI - Back Index. If the cursor is on the left margin, the contents
+/// of the scrolling region are shifted one column right and a blank
+/// column is inserted at the left margin. Otherwise the cursor moves one
+/// column left, unless it is already at the left edge of the screen.
+///
+/// This unsets the pending wrap state without wrapping.
+pub fn backIndex(self: *Terminal) void {
+    self.screens.active.cursor.pending_wrap = false;
+
+    if (self.screens.active.cursor.x == self.scrolling_region.left) {
+        self.insertColumns(1);
+        return;
+    }
+
+    if (self.screens.active.cursor.x > 0) self.screens.active.cursorLeft(1);
+}
+
+/// DECFI - Forward Index. If the cursor is on the right margin, the
+/// contents of the scrolling region are shifted one column left, losing
+/// the column at the left margin, and a blank column is inserted at the
+/// right margin. Otherwise the cursor
+/// moves one column right, unless it is already at the right edge of
+/// the screen.
+///
+/// This unsets the pending wrap state without wrapping.
+pub fn forwardIndex(self: *Terminal) void {
+    self.screens.active.cursor.pending_wrap = false;
+
+    if (self.screens.active.cursor.x == self.scrolling_region.right) {
+        // Scrolling the region left means deleting its left-most column,
+        // not the one under the cursor.
+        const old_x = self.screens.active.cursor.x;
+        const old_y = self.screens.active.cursor.y;
+        defer self.screens.active.cursorAbsolute(old_x, old_y);
+        self.screens.active.cursorAbsolute(self.scrolling_region.left, old_y);
+        self.deleteColumns(1);
+        return;
+    }
+
+    if (self.screens.active.cursor.x < self.cols - 1) self.screens.active.cursorRight(1);
+}
+
+/// Returns true if the cursor is inside the scrolling region, including
+/// the left and right margins.
+fn cursorInScrollingRegion(self: *const Terminal) bool {
+    const cursor = &self.screens.active.cursor;
+    return cursor.x >= self.scrolling_region.left and
+        cursor.x <= self.scrolling_region.right and
+        cursor.y >= self.scrolling_region.top and
+        cursor.y <= self.scrolling_region.bottom;
+}
+
 pub fn eraseChars(self: *Terminal, count_req: usize) void {
     const count = end: {
         const remaining = self.cols - self.screens.active.cursor.x;
@@ -4517,6 +4628,20 @@ test "Terminal: resize rejects zero dimensions before mutation" {
     try testing.expectEqual(@as(u32, 100), t.width_px);
     try testing.expectEqual(@as(u32, 100), t.height_px);
     try testing.expect(!t.flags.dirty.clear);
+}
+
+test "Terminal: init rejects zero dimensions" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+
+    try testing.expectError(error.InvalidValue, init(io_impl, alloc, .{
+        .cols = 0,
+        .rows = 5,
+    }));
+    try testing.expectError(error.InvalidValue, init(io_impl, alloc, .{
+        .cols = 10,
+        .rows = 0,
+    }));
 }
 
 test "Terminal: resize preserves pixel dimensions when omitted" {
@@ -14018,6 +14143,211 @@ test "Terminal: deleteChars wide char across right margin" {
         const str = try t.plainString(alloc);
         defer testing.allocator.free(str);
         try testing.expectEqualStrings("13456", str);
+    }
+}
+
+test "Terminal: insertColumns" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 3, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcdefg\nABCDEFG\nzyxwvut");
+    t.setCursorPos(2, 2);
+    t.insertColumns(2);
+
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.y);
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("a  bcdef\nA  BCDEF\nz  yxwvu", str);
+    }
+}
+
+test "Terminal: insertColumns with margins" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 4, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcdefg\nABCDEFG\nzyxwvut\nZYXWVUT");
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(2, 5);
+    t.setTopAndBottomMargin(2, 3);
+    t.setCursorPos(2, 3);
+    t.insertColumns(1);
+
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abcdefg\nAB CDFG\nzy xwut\nZYXWVUT", str);
+    }
+}
+
+test "Terminal: insertColumns outside scrolling region" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 4, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcdefg\nABCDEFG");
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(2, 5);
+    t.setCursorPos(1, 1);
+    t.insertColumns(10);
+    t.setTopAndBottomMargin(3, 4);
+    t.setCursorPos(1, 3);
+    t.insertColumns(10);
+
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abcdefg\nABCDEFG", str);
+    }
+}
+
+test "Terminal: deleteColumns" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 3, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcdefg\nABCDEFG\nzyxwvut");
+    t.setCursorPos(2, 2);
+    t.deleteColumns(2);
+
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.y);
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("adefg\nADEFG\nzwvut", str);
+    }
+}
+
+test "Terminal: deleteColumns with margins" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 4, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcdefg\nABCDEFG\nzyxwvut\nZYXWVUT");
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(2, 5);
+    t.setTopAndBottomMargin(2, 3);
+    t.setCursorPos(2, 3);
+    t.deleteColumns(99);
+
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("abcdefg\nAB   FG\nzy   ut\nZYXWVUT", str);
+    }
+}
+
+test "Terminal: backIndex moves cursor left" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 3, .cols = 8 });
+    defer t.deinit(alloc);
+
+    t.setCursorPos(2, 5);
+    t.backIndex();
+    try testing.expectEqual(@as(usize, 3), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.y);
+
+    // Left of the left margin it still moves, but stops at the screen edge.
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(3, 5);
+    t.setCursorPos(1, 2);
+    t.backIndex();
+    try testing.expectEqual(@as(usize, 0), t.screens.active.cursor.x);
+    t.backIndex();
+    try testing.expectEqual(@as(usize, 0), t.screens.active.cursor.x);
+}
+
+test "Terminal: backIndex scrolls at left margin" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 5, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString(" abcde\n fghij\n klmno\n pqrst\n uvwxy");
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(3, 5);
+    t.setTopAndBottomMargin(2, 4);
+    t.setCursorPos(3, 3);
+    t.backIndex();
+
+    try testing.expectEqual(@as(usize, 2), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 2), t.screens.active.cursor.y);
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings(" abcde\n f ghj\n k lmo\n p qrt\n uvwxy", str);
+    }
+}
+
+test "Terminal: forwardIndex moves cursor right" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 3, .cols = 8 });
+    defer t.deinit(alloc);
+
+    t.setCursorPos(2, 5);
+    t.forwardIndex();
+    try testing.expectEqual(@as(usize, 5), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 1), t.screens.active.cursor.y);
+
+    // Right of the right margin it still moves, but stops at the screen edge.
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(3, 5);
+    t.setCursorPos(1, 7);
+    t.forwardIndex();
+    try testing.expectEqual(@as(usize, 7), t.screens.active.cursor.x);
+    t.forwardIndex();
+    try testing.expectEqual(@as(usize, 7), t.screens.active.cursor.x);
+}
+
+test "Terminal: forwardIndex scrolls at right margin" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 5, .cols = 8 });
+    defer t.deinit(alloc);
+
+    try t.printString(" abcde\n fghij\n klmno\n pqrst\n uvwxy");
+    t.modes.set(.enable_left_and_right_margin, true);
+    t.setLeftAndRightMargin(3, 5);
+    t.setTopAndBottomMargin(2, 4);
+    t.setCursorPos(3, 5);
+    t.forwardIndex();
+
+    try testing.expectEqual(@as(usize, 4), t.screens.active.cursor.x);
+    try testing.expectEqual(@as(usize, 2), t.screens.active.cursor.y);
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings(" abcde\n fhi j\n kmn o\n prs t\n uvwxy", str);
+    }
+}
+
+test "Terminal: forwardIndex scrolls whole screen at right edge" {
+    const alloc = testing.allocator;
+    const io_impl = testing.io;
+    var t = try init(io_impl, alloc, .{ .rows = 2, .cols = 4 });
+    defer t.deinit(alloc);
+
+    try t.printString("abcd");
+    try testing.expect(t.screens.active.cursor.pending_wrap);
+    t.forwardIndex();
+
+    try testing.expect(!t.screens.active.cursor.pending_wrap);
+    try testing.expectEqual(@as(usize, 3), t.screens.active.cursor.x);
+    {
+        const str = try t.plainString(alloc);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("bcd", str);
     }
 }
 

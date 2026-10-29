@@ -1929,7 +1929,9 @@ pub const Capacity = struct {
     /// Number of bytes to allocate for strings.
     string_bytes: size.StringBytesInt = string_bytes_default,
 
+    /// The changes to make in `adjust`. Fields left as null are unchanged.
     pub const Adjustment = struct {
+        /// The new number of columns. The number of rows changes to fit.
         cols: ?size.CellCountInt = null,
     };
 
@@ -1956,11 +1958,40 @@ pub const Capacity = struct {
         return @min(std.math.maxInt(size.CellCountInt), max_cols);
     }
 
-    /// Adjust the capacity parameters while retaining the same total size.
+    /// Returns a copy of this capacity with the requested changes applied,
+    /// without making the page use any more memory.
     ///
-    /// Adjustments always happen by limiting the rows in the page. Everything
-    /// else can grow. If it is impossible to achieve the desired adjustment,
-    /// OutOfMemory is returned.
+    /// Changing the number of columns changes how much memory each row
+    /// needs. To stay within the original memory size, `adjust` changes the
+    /// number of rows to match. Wider pages fit fewer rows and narrower pages
+    /// fit more. All other fields, such as `styles`, are left unchanged.
+    ///
+    /// The result never uses more memory than the original, but it can use
+    /// less. This happens for two reasons:
+    ///
+    ///   - Only whole rows are counted. Leftover memory that is too small
+    ///     for one more row goes unused.
+    ///   - The number of rows is capped at `maxInt(size.CellCountInt)`.
+    ///     Narrowing a very wide page can free enough memory for more rows
+    ///     than a page can hold. The extra memory goes unused.
+    ///
+    /// Returns `error.OutOfMemory` if not even one row of the requested
+    /// width fits. Use `maxCols` to find the widest column count that fits.
+    ///
+    /// Example:
+    ///
+    ///     const cap: Capacity = .{ .cols = 80, .rows = 24 };
+    ///
+    ///     // More columns per row means fewer rows fit.
+    ///     const wide = try cap.adjust(.{ .cols = 160 });
+    ///     assert(wide.cols == 160);
+    ///     assert(wide.rows < 24);
+    ///
+    ///     // Too many columns for even one row is an error.
+    ///     const max = cap.maxCols().?;
+    ///     _ = cap.adjust(.{ .cols = max + 1 }) catch |err| {
+    ///         assert(err == error.OutOfMemory);
+    ///     };
     pub fn adjust(self: Capacity, req: Adjustment) Allocator.Error!Capacity {
         var adjusted = self;
         if (req.cols) |cols| {
@@ -1971,7 +2002,14 @@ pub const Capacity = struct {
             //   - The row metadata itself
             //   - The cells per row (n=cols)
             const bytes_per_row: usize = @sizeOf(Row) + @sizeOf(Cell) * @as(usize, @intCast(cols));
-            var new_rows: usize = @divFloor(available, bytes_per_row);
+
+            // A page can't hold more than maxInt(CellCountInt) rows, so cap
+            // the count here. Using fewer rows than would fit is always safe
+            // because it only makes the page smaller.
+            var new_rows: usize = @min(
+                @divFloor(available, bytes_per_row),
+                std.math.maxInt(size.CellCountInt),
+            );
 
             // The cell array is aligned to a cache line, so the padding
             // between the row headers and the cells depends on the row
@@ -2883,6 +2921,23 @@ test "Capacity maxCols with 1 row exactly" {
     const max = cap.maxCols().?;
     const adjusted = try cap.adjust(.{ .cols = max });
     try testing.expectEqual(@as(size.CellCountInt, 1), adjusted.rows);
+}
+
+test "Capacity adjust clamps rows to CellCountInt" {
+    // A max-width page narrowed to one column frees enough memory for far
+    // more rows than a page can hold. The row count must be capped, and
+    // the page must still fit in the original memory size.
+    const cap: Capacity = .{
+        .cols = std.math.maxInt(size.CellCountInt),
+        .rows = 4,
+        .styles = 0,
+        .grapheme_bytes = 0,
+        .hyperlink_bytes = 0,
+        .string_bytes = 0,
+    };
+    const adjusted = try cap.adjust(.{ .cols = 1 });
+    try testing.expectEqual(std.math.maxInt(size.CellCountInt), adjusted.rows);
+    try testing.expect(Page.layout(adjusted).total_size <= Page.layout(cap).total_size);
 }
 
 test "Page init" {

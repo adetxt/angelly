@@ -73,9 +73,9 @@
   },
   {
     "type": "archive",
-    "url": "https://deps.files.ghostty.org/ghostty-themes-release-20261012-151317-d3e95e4.tgz",
-    "dest": "vendor/p/N-V-__8AAI2WBQDrsjfyEiqnmYZ4VfGdJaZhN2mKsaTaIVWq",
-    "sha256": "c1d310ad96f4cbc5d3ff802259c94bbd586a01af6a09c4c66f159f018cb16f1d"
+    "url": "https://deps.files.ghostty.org/ghostty-themes-release-20261019-151001-86a776d.tgz",
+    "dest": "vendor/p/N-V-__8AAJ3vBQAq1fLMh5J8uWLkeDLS6WAdR2x5KcrmEyz6",
+    "sha256": "ab2513e316372c45c9f86e3e511aebdbfa6c39fa03c210096b19152fe288505b"
   },
   {
     "type": "archive",
@@ -181,9 +181,9 @@
   },
   {
     "type": "archive",
-    "url": "https://deps.files.ghostty.org/z2d-f3cf28188dae39946964c81475ff234c008125a6.tar.gz",
-    "dest": "vendor/p/z2d-0.12.2-pre-j5P_HilCEQDH_2RC0PZqYQd4rHTl13b-VXpaDQ1sE4kZ",
-    "sha256": "0d2ea2ef74e090ca152b88fadd7fed8b699df27d59c019656f1521fda2e36498"
+    "url": "https://github.com/vancluever/z2d/archive/8787d71bac42d9aab00428ccb37a4fd453418761.tar.gz",
+    "dest": "vendor/p/z2d-0.13.2-j5P_HkkVFAAtOSQPRTS7wbZLbYs7oETRn7nUKSUwDjM_",
+    "sha256": "9e094da050d264dabe8df55123328362f232908030e76c3e8323248553b26d25"
   },
   {
     "type": "archive",
@@ -210,10 +210,10 @@
     "sha256": "c7d268d7c0dcecfeb209d0ccf2b04364d1541722c5e53e4c5bbd3eaa481847a4"
   },
   {
-    "type": "git",
-    "url": "https://github.com/sergot/zigimg",
-    "commit": "c701c9f99779d7ddf594dcc6da8f858fd277d61f",
-    "dest": "vendor/p/zigimg-0.1.0-8_eo2ri_FwBqF5UYiggLz4IGjHJO_n9-B6gT9Ayqg8G4"
+    "type": "archive",
+    "url": "https://deps.files.ghostty.org/zigimg-c701c9f99779d7ddf594dcc6da8f858fd277d61f.tar.gz",
+    "dest": "vendor/p/zigimg-0.1.0-8_eo2ri_FwBqF5UYiggLz4IGjHJO_n9-B6gT9Ayqg8G4",
+    "sha256": "5e427099ae2f1a52592c947117b1abe25a6e17a26d78c260e21b86fdf46b418f"
   },
   {
     "type": "archive",

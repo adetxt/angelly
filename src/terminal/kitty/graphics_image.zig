@@ -1027,6 +1027,10 @@ test "image load accepts shared memory names without a leading slash" {
         return error.SkipZigTest;
     }
 
+    // FreeBSD's shm_open rejects names without a leading slash with
+    // EINVAL, so there is no such object for us to load.
+    if (comptime builtin.target.os.tag == .freebsd) return error.SkipZigTest;
+
     const testing = std.testing;
     const alloc = testing.allocator;
 

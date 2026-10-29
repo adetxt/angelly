@@ -357,20 +357,33 @@ pub fn build(b: *std.Build) !void {
     // Zig module tests
     {
         const mod_vt_test = b.addTest(.{
+            .name = "ghostty-vt-test",
             .root_module = mod.vt,
             .filters = test_filters,
         });
         const mod_vt_test_run = b.addRunArtifact(mod_vt_test);
         test_lib_vt_step.dependOn(&mod_vt_test_run.step);
-        test_lib_vt_build_step.dependOn(&mod_vt_test.step);
 
         const mod_vt_c_test = b.addTest(.{
+            .name = "ghostty-vt-c-test",
             .root_module = mod.vt_c,
             .filters = test_filters,
         });
         const mod_vt_c_test_run = b.addRunArtifact(mod_vt_c_test);
         test_lib_vt_step.dependOn(&mod_vt_c_test_run.step);
-        test_lib_vt_build_step.dependOn(&mod_vt_c_test.step);
+
+        if (config.emit_test_exe) {
+            // With -Demit-test-exe, test-lib-vt-build builds only the C API
+            // test binary and installs it to zig-out/bin, so it can run on
+            // another machine. CI uses this to run it in a FreeBSD VM. The
+            // C API binary already runs every test in the Zig one, and
+            // compiling both at once can run a CI runner out of memory.
+            const install = b.addInstallArtifact(mod_vt_c_test, .{});
+            test_lib_vt_build_step.dependOn(&install.step);
+        } else {
+            test_lib_vt_build_step.dependOn(&mod_vt_test.step);
+            test_lib_vt_build_step.dependOn(&mod_vt_c_test.step);
+        }
     }
 
     // Tests (skip when building libghostty-vt)
