@@ -15,7 +15,7 @@ upstream terminal foundation and adds a few personal touches to the macOS app.
 
 ## Screenshots
 
-<!-- Add an Angelly app screenshot here when a suitable app screenshot is available. -->
+![Angelly screenshot](assets/angelly.webp)
 
 ## Angelly features
 
