@@ -7,30 +7,35 @@
 <p align="center">
   Ghostty, with a little extra taste.
   <br />
-  A personal, vibe-coded macOS fork of <a href="https://ghostty.org">Ghostty</a>.
+  A personal macOS fork of <a href="https://ghostty.org">Ghostty</a>.
 </p>
 
-## Why this exists
+Angelly is a fast, native terminal for macOS, built on Ghostty. It keeps the
+upstream terminal foundation and adds a few personal touches to the macOS app.
 
-I love [Ghostty](https://ghostty.org). It's fast, native, and well made. I just
-want to add some cosmetic touches of my own on top of it, and a few small
-conveniences I miss from other terminals. Angelly is where I do that.
+## Screenshots
 
-## Heads-up: this project is vibe-coded
+<!-- Add an Angelly app screenshot here when a suitable app screenshot is available. -->
 
-Angelly is built with AI assistance (Claude Code) and not reviewed like upstream
-code. Expect rough edges. For a stable terminal, use [Ghostty](https://ghostty.org).
+## Angelly features
 
-This is an independent fork. It is **not affiliated with or endorsed by**
-Ghostty or its maintainers, and it isn't a contribution to upstream. Ghostty's
-own [AI policy](AI_POLICY.md) is strict about AI-generated contributions, so I
-keep this work in a separate project instead.
+- ⚙️ Settings organized into clear sections.
+- 🔄 Automatic update checks and downloads.
+- ↔️ Resizable tab sidebar with remembered width.
+- 🗂️ Tab groups with color coding.
+- ➕ Choose where new tabs open.
 
-## Status
+Angelly is a personal, vibe-coded project and may have rough edges.
 
-- macOS only so far. The Linux/GTK code and packaging files are still here but
-  untouched and untested.
-- Release builds are signed with a Developer ID and notarized by Apple.
+## Project direction
+
+There’s no set roadmap. Angelly started as a way to add sidebar tabs and tab
+groups to Ghostty. Have an idea? You’re welcome to contribute or [open an
+issue](https://github.com/adetxt/angelly/issues).
+
+Angelly is currently macOS-only. Linux and GTK code remains in the repository,
+but this fork's Linux app is not currently maintained or tested. Release builds
+are signed with a Developer ID and notarized by Apple.
 
 ## Install
 
@@ -39,8 +44,12 @@ and drag Angelly into Applications.
 
 ## Build
 
-You need macOS, Xcode (with its Metal toolchain: `xcodebuild -downloadComponent MetalToolchain`)
-and [Zig](https://ziglang.org/download/) 0.17.0.
+You need macOS, Xcode, and [Zig](https://ziglang.org/download/) 0.17.0. Install
+the Metal toolchain with:
+
+```sh
+xcodebuild -downloadComponent MetalToolchain
+```
 
 ```sh
 zig build -Doptimize=ReleaseFast
@@ -54,6 +63,6 @@ Ghostty.
 ## Credits and license
 
 Angelly is built on [Ghostty](https://github.com/ghostty-org/ghostty) by
-Mitchell Hashimoto and the Ghostty contributors. All the hard work is theirs,
-and I'm grateful for it. Ghostty is released under the MIT license, and so is
-this fork. See [LICENSE](LICENSE).
+Mitchell Hashimoto and the Ghostty contributors. This is an independent fork,
+not affiliated with or endorsed by Ghostty or its maintainers. Ghostty and
+Angelly are released under the MIT license. See [LICENSE](LICENSE).
