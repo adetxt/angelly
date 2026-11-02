@@ -26,7 +26,8 @@ extension TerminalRestorableState.InternalState where ViewType == Ghostty.Surfac
         self.init(
             focusedSurface: controller.focusedSurface?.id.uuidString,
             surfaceTree: controller.surfaceTree,
-            effectiveFullscreenMode: controller.fullscreenStyle?.fullscreenMode,
+            effectiveFullscreenMode: controller.fullscreenStyle?.isFullscreen == true
+                ? controller.fullscreenStyle?.fullscreenMode : nil,
             tabColor: (controller.window as? TerminalWindow)?.tabColor,
             titleOverride: controller.titleOverride,
             sidebarGroup: TabGroupStore.shared.snapshot((controller.window as? TerminalWindow)?.sidebarGroup),

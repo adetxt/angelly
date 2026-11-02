@@ -33,6 +33,38 @@ final class GhosttyHorizontalTabDragTests: GhosttyCustomConfigCase {
     }
 
     @MainActor
+    func testDragsTabIntoEmptySidebarSpace() throws {
+        let app = try launchTabs(sidebar: true)
+        defer { app.terminate() }
+        let sidebar = app.groups["Vertical Tab Sidebar"].firstMatch
+        let first = tab("First", in: sidebar)
+        let destination = sidebar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(
+            forDuration: 0.2, thenDragTo: destination)
+
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertLessThan(tab("Second", in: sidebar).frame.minY, tab("Third", in: sidebar).frame.minY)
+        XCTAssertLessThan(tab("Third", in: sidebar).frame.minY, first.frame.minY)
+    }
+
+    @MainActor
+    func testDragsTabIntoEmptyHorizontalSpace() throws {
+        let app = try launchTabs()
+        defer { app.terminate() }
+        let bar = app.scrollViews["Horizontal Tab Bar"].firstMatch
+        let first = bar.buttons["First"]
+        let third = bar.buttons["Third"]
+        let destination = third.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: 40, dy: 0))
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(
+            forDuration: 0.2, thenDragTo: destination)
+
+        XCTAssertTrue(first.waitForExistence(timeout: 2))
+        XCTAssertLessThan(bar.buttons["Second"].frame.minX, third.frame.minX)
+        XCTAssertLessThan(third.frame.minX, first.frame.minX)
+    }
+
+    @MainActor
     func testDragsTabUsingItsTitle() throws {
         let app = try launchTabs()
         defer { app.terminate() }
@@ -112,8 +144,10 @@ final class GhosttyHorizontalTabDragTests: GhosttyCustomConfigCase {
         XCTAssertTrue(second.waitForExistence(timeout: 2))
         XCTAssertLessThan(second.frame.minY, first.frame.minY)
         XCTAssertLessThan(first.frame.minY, third.frame.minY)
-        // The gap that opens as a drag enters a header slides it away from the pointer, so a blind
-        // drag cannot reach a vertical header's far zone; that zone is covered by the model tests.
+        drag(second, to: third, at: CGVector(dx: 0.5, dy: 0.9))
+        XCTAssertTrue(second.waitForExistence(timeout: 2))
+        XCTAssertLessThan(first.frame.minY, third.frame.minY)
+        XCTAssertLessThan(third.frame.minY, second.frame.minY)
     }
 
     /// Titles are matched by prefix because the sidebar appends each tab's shortcut to its label.

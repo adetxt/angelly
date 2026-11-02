@@ -1723,6 +1723,13 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     static func moveTab(_ tab: NSWindow, relativeTo target: NSWindow, ordered: NSWindow.OrderingMode) {
         guard let tabGroup = tab.tabGroup else { return }
         let selected = tabGroup.selectedWindow ?? tab
+        let frame = selected.frame
+        defer {
+            // Reattaching tabs can adopt a hidden neighbor's stale position and size.
+            if !selected.styleMask.contains(.fullScreen), selected.frame != frame {
+                selected.setFrame(frame, display: true)
+            }
+        }
 
         // Moving tabs on macOS 26 RC causes very nasty visual glitches in the titlebar tabs.
         // I believe this is due to messed up constraints for our hacky tab bar. I'd like to

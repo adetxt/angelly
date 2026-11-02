@@ -8,6 +8,7 @@ struct TerminalTabBar: View {
     @ObservedObject var model: TerminalTabModel
     @ObservedObject private var sidebarState = TabSidebarState.shared
     @State private var endDropPosition: CGFloat?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var scrollTarget: TerminalTabModel.RowID? {
         if let renaming = model.renaming {
@@ -33,9 +34,12 @@ struct TerminalTabBar: View {
                                     TerminalTabGroupButton(model: model, header: header, anchor: anchor).id(row.id)
                                 }
                             }
+                            TerminalTabEndDropTarget(model: model, axis: .horizontal)
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 4)
+                        .frame(minWidth: geometry.size.width, alignment: .leading)
+                        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1), value: model.rows.map(\.id))
                     }
                     .onChange(of: geometry.size.width) { _ in scrollToTarget(proxy) }
                 }
@@ -44,7 +48,6 @@ struct TerminalTabBar: View {
                     if !visible { scrollToTarget(proxy) }
                 }
                 .onChange(of: scrollTarget) { _ in scrollToTarget(proxy) }
-                .onChange(of: model.rows.map(\.id)) { _ in scrollToTarget(proxy) }
             }
 
             Button(action: model.newTab) {
@@ -56,7 +59,7 @@ struct TerminalTabBar: View {
             .accessibilityLabel("New Tab")
             .background(endDropPosition == nil ? Color.clear : Color.accentColor.opacity(0.15))
             .tabDropTarget(
-                axis: .horizontal, position: $endDropPosition, gap: nil,
+                axis: .horizontal, position: $endDropPosition, edge: nil,
                 canDrop: { model.canDropAtEnd }, drop: { _ in model.dropAtEnd() })
         }
         .frame(height: Self.height)
@@ -120,7 +123,7 @@ private struct TerminalTabButton: View {
         }
         .help(item.shortcut.map { "\(item.title) (\($0))" } ?? item.title)
         .tabDropTarget(
-            axis: .horizontal, position: $dropPosition, gap: dropPosition.map(horizontalEdge(at:)),
+            axis: .horizontal, position: $dropPosition, edge: dropPosition.map(horizontalEdge(at:)),
             canDrop: { model.dropEdge(on: item) != nil },
             drop: { model.drop(on: item, edge: horizontalEdge(at: $0)) })
         .contextMenu { TerminalTabContextMenu(model: model, item: item) }
@@ -137,7 +140,7 @@ private struct TerminalTabGroupButton: View {
     private var isGroupDrag: Bool { model.groupDropEdge(anchor: anchor) != nil }
 
     /// A dragged group lands before or after this one by which half it hovers; a dragged tab by `landing`.
-    private var gap: VerticalEdge? {
+    private var dropEdge: VerticalEdge? {
         guard let position = dropPosition else { return nil }
         if isGroupDrag { return horizontalEdge(at: position) }
         switch model.landing(onGroup: header, at: position) {
@@ -192,7 +195,7 @@ private struct TerminalTabGroupButton: View {
             }
         }
         .tabDropTarget(
-            axis: .horizontal, position: $dropPosition, gap: gap,
+            axis: .horizontal, position: $dropPosition, edge: dropEdge,
             canDrop: { isGroupDrag || model.draggedItem != nil },
             drop: { position in
                 if isGroupDrag {

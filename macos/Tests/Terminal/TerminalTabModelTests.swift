@@ -7,6 +7,16 @@ import UniformTypeIdentifiers
 @Suite(.serialized)
 @MainActor
 struct TerminalTabModelTests {
+    @Test(arguments: [Axis.horizontal, .vertical], [VerticalEdge.top, .bottom])
+    func insertionMarkerKeepsDropTargetSize(axis: Axis, edge: VerticalEdge) {
+        let view = NSHostingView(rootView: Color.clear
+            .frame(width: 168, height: 32)
+            .tabDropTarget(
+                axis: axis, position: .constant(0.1), edge: edge,
+                canDrop: { true }, drop: { _ in }))
+        #expect(view.fittingSize == NSSize(width: 168, height: 32))
+    }
+
     /// SwiftUI only matches the tab drag payload when its type is declared by the app bundle.
     @Test func declaresTheTabDragType() throws {
         let declarations = try #require(
@@ -54,6 +64,28 @@ struct TerminalTabModelTests {
         ])
         #expect(fixture.model.items.map(\.group) == [second, second, first, first])
         #expect(fixture.windows[0].tabGroup?.selectedWindow === selected)
+    }
+
+    @Test(arguments: [0, 3], [false, true])
+    func reorderingPreservesWindowFrame(dragged: Int, titlebarTabs: Bool) async throws {
+        let fixture = try Fixture(titlebarTabs: titlebarTabs)
+        defer { fixture.close() }
+        let selected = fixture.windows[0]
+        selected.makeKeyAndOrderFront(nil)
+        selected.setFrame(NSRect(x: 140, y: 160, width: 720, height: 520), display: false)
+        let frame = selected.frame
+        fixture.model.beginDrag(fixture.model.items[dragged])
+        fixture.model.drop(on: fixture.model.items[dragged == 0 ? 3 : 0])
+        #expect(selected.frame == frame)
+        #expect(selected.tabGroup?.selectedWindow === selected)
+        let order = dragged == 0 ? [1, 2, 3, 0] : [3, 0, 1, 2]
+        #expect(selected.tabGroup?.windows == order.map { fixture.windows[$0] })
+        // Tahoe defers making an inactive tab key until the next turn.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(selected.frame == frame)
+        #expect(selected.tabGroup?.selectedWindow === selected)
     }
 
     @Test func joinsAndLeavesGroupWithoutSplittingIt() throws {
@@ -201,12 +233,15 @@ struct TerminalTabModelTests {
     @Test func reservesSpaceForOnlyTheVisibleTabLayout() throws {
         let fixture = try Fixture(sidebarVisible: false)
         defer { fixture.close() }
+        let originalWidth = TabSidebarState.shared.width
+        TabSidebarState.shared.setWidth(240)
+        defer { TabSidebarState.shared.setWidth(originalWidth) }
         let container = TerminalViewContainer { EmptyView() }
         container.initialContentSize = NSSize(width: 640, height: 480)
         container.installTabViews(fixture.model)
         #expect(container.intrinsicContentSize == NSSize(width: 640, height: 520))
         TabSidebarState.shared.toggle()
-        #expect(container.intrinsicContentSize == NSSize(width: 860, height: 480))
+        #expect(container.intrinsicContentSize == NSSize(width: 880, height: 480))
         TabSidebarState.shared.toggle()
         #expect(container.intrinsicContentSize == NSSize(width: 640, height: 520))
     }
@@ -219,15 +254,21 @@ struct TerminalTabModelTests {
         private var groups: [UUID] = []
         private var controllers: [TerminalController] = []
 
-        init(sidebarVisible: Bool = true, withSurfaces: Bool = false) throws {
+        init(sidebarVisible: Bool = true, withSurfaces: Bool = false, titlebarTabs: Bool = false) throws {
             let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
             wasVisible = TabSidebarState.shared.isVisible
             if wasVisible != sidebarVisible { TabSidebarState.shared.toggle() }
             let identifier = UUID().uuidString
             windows = (0..<4).map { index in
-                let window = TerminalWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-                    styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+                let rect = NSRect(x: 0, y: 0, width: 640, height: 480)
+                let style: NSWindow.StyleMask = [.titled, .closable, .resizable]
+                let window: TerminalWindow
+                if titlebarTabs, #available(macOS 26, *) {
+                    window = TitlebarTabsTahoeTerminalWindow(
+                        contentRect: rect, styleMask: style, backing: .buffered, defer: false)
+                } else {
+                    window = TerminalWindow(contentRect: rect, styleMask: style, backing: .buffered, defer: false)
+                }
                 window.isReleasedWhenClosed = false
                 window.tabbingIdentifier = identifier
                 window.title = "Tab \(index + 1)"

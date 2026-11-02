@@ -68,28 +68,33 @@ struct TabSidebarView: View {
     @ObservedObject var model: TerminalTabModel
     @ObservedObject private var state = TabSidebarState.shared
     @State private var dragStartWidth: CGFloat?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 2) {
-                    ForEach(model.rows) { row in
-                        Group {
-                            switch row {
-                            case .group(let header, let anchor):
-                                TabSidebarGroupHeader(model: model, header: header, anchor: anchor)
-                            case .tab(let item):
-                                TabSidebarRow(model: model, item: item)
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 2) {
+                        ForEach(model.rows) { row in
+                            Group {
+                                switch row {
+                                case .group(let header, let anchor):
+                                    TabSidebarGroupHeader(model: model, header: header, anchor: anchor)
+                                case .tab(let item):
+                                    TabSidebarRow(model: model, item: item)
+                                }
                             }
+                            .transition(.opacity)
                         }
-                        .transition(.opacity)
+                        TerminalTabEndDropTarget(model: model, axis: .vertical)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1), value: model.rows.map(\.id))
                 }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-                .animation(.easeInOut(duration: 0.18), value: model.rows.map(\.id))
             }
         }
         .frame(width: state.width)
@@ -212,7 +217,7 @@ private struct TabSidebarRow: View {
             return provider
         }
         .tabDropTarget(
-            axis: .vertical, position: $dropPosition, gap: dropPosition == nil ? nil : model.dropEdge(on: item),
+            axis: .vertical, position: $dropPosition, edge: dropPosition == nil ? nil : model.dropEdge(on: item),
             canDrop: { model.dropEdge(on: item) != nil },
             drop: { _ in model.drop(on: item) })
         .contextMenu { TerminalTabContextMenu(model: model, item: item) }
@@ -273,7 +278,7 @@ private struct TabSidebarGroupHeader: View {
     private var isGroupDrag: Bool { model.groupDropEdge(anchor: anchor) != nil }
 
     /// A dragged group lands on the side it is dragged toward; a dragged tab by `landing`.
-    private var gap: VerticalEdge? {
+    private var dropEdge: VerticalEdge? {
         guard let position = dropPosition else { return nil }
         if isGroupDrag { return model.groupDropEdge(anchor: anchor) }
         switch model.landing(onGroup: header, at: position) {
@@ -337,7 +342,7 @@ private struct TabSidebarGroupHeader: View {
             return provider
         }
         .tabDropTarget(
-            axis: .vertical, position: $dropPosition, gap: gap,
+            axis: .vertical, position: $dropPosition, edge: dropEdge,
             canDrop: { isGroupDrag || model.draggedItem != nil },
             drop: { position in
                 if isGroupDrag { model.dropGroup(anchor: anchor) } else { model.drop(onGroup: header, at: position) }
