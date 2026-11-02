@@ -1905,13 +1905,23 @@ extension Ghostty {
             }
 
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            let uuid = UUID(uuidString: try container.decode(String.self, forKey: .uuid))
+            let savedUUID = UUID(uuidString: try container.decode(String.self, forKey: .uuid))
+            let recovery = decoder.userInfo[ClosedWindowRecoveryContext.decoderKey] as? ClosedWindowRecoveryContext
+            let uuid = savedUUID.map { recovery?.replacement(for: $0) ?? $0 }
             var config = Ghostty.SurfaceConfiguration()
             config.workingDirectory = try container.decode(String?.self, forKey: .pwd)
+            if let recovery, let path = config.workingDirectory {
+                var isDirectory: ObjCBool = false
+                if !FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) || !isDirectory.boolValue {
+                    config.workingDirectory = nil
+                    recovery.usedDirectoryFallback = true
+                }
+            }
             let savedTitle = try container.decodeIfPresent(String.self, forKey: .title)
             let isUserSetTitle = try container.decodeIfPresent(Bool.self, forKey: .isUserSetTitle) ?? false
 
             self.init(app, baseConfig: config, uuid: uuid)
+            try recovery?.validate(self)
 
             // Restore the saved title after initialization
             if let title = savedTitle {

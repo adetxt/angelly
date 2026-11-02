@@ -111,6 +111,21 @@ class AppDelegate: NSObject,
     /// The global undo manager for app-level state such as window restoration.
     lazy var undoManager = ExpiringUndoManager()
 
+    @MainActor lazy var closedWindowStore: ClosedWindowStore = {
+        let manager = FileManager.default
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["GHOSTTY_RECOVERY_DIRECTORY"] {
+            return ClosedWindowStore(directoryURL: URL(fileURLWithPath: path))
+        }
+        if NSClassFromString("XCTestCase") != nil {
+            return ClosedWindowStore(directoryURL: manager.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        }
+        #endif
+        let directory = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier!)
+        return ClosedWindowStore(directoryURL: directory)
+    }()
+
     /// The settings window, created the first time it is opened.
     private lazy var settingsController = SettingsController(ghostty: ghostty)
 
@@ -693,7 +708,7 @@ class AppDelegate: NSObject,
         self.menuQuickTerminal?.state = if quickController.visible { .on } else { .off }
     }
 
-    @objc private func ghosttyConfigDidChange(_ notification: Notification) {
+    @MainActor @objc private func ghosttyConfigDidChange(_ notification: Notification) {
         // We only care if the configuration is a global configuration, not a surface one.
         guard notification.object == nil else { return }
 
@@ -812,7 +827,7 @@ class AppDelegate: NSObject,
         NSApp.dockTile.display()
     }
 
-    private func ghosttyConfigDidChange(config: Ghostty.Config) {
+    @MainActor private func ghosttyConfigDidChange(config: Ghostty.Config) {
         // Update the config we need to store
         self.derivedConfig = DerivedConfig(config)
 
@@ -824,6 +839,17 @@ class AppDelegate: NSObject,
         case "always": UserDefaults.ghostty.setValue(true, forKey: "NSQuitAlwaysKeepsWindows")
         case "default": fallthrough
         default: UserDefaults.ghostty.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+        }
+
+        do {
+            try closedWindowStore.setPersistenceEnabled(UserDefaults.ghostty.bool(forKey: "NSQuitAlwaysKeepsWindows"))
+        } catch {
+            Self.logger.error("could not load or clear closed window recovery history")
+            if !closedWindowStore.isPersistenceEnabled {
+                showWindowRecoveryMessage(
+                    "Couldn’t Delete Window Recovery History",
+                    detail: "Window recovery is disabled, but its saved history could not be deleted. Check file permissions and reload the configuration to retry.")
+            }
         }
 
         // Sync our auto-update settings. If SUEnableAutomaticChecks (in our Info.plist) is
@@ -1347,6 +1373,16 @@ extension AppDelegate {
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(reopenClosedWindow(_:)):
+            return !closedWindowStore.entries.isEmpty
+
+        case #selector(reopenRecentWindow(_:)):
+            guard let id = item.representedObject as? UUID else { return false }
+            return closedWindowStore.entries.contains { $0.id == id }
+
+        case #selector(clearRecentlyClosedWindows(_:)):
+            return closedWindowStore.isPersistenceEnabled && closedWindowStore.hasHistory
+
         case #selector(setAsDefaultTerminal(_:)):
             return NSWorkspace.shared.defaultTerminal != Bundle.main.bundleURL
 

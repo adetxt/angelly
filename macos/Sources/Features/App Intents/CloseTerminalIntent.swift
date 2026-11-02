@@ -31,7 +31,7 @@ struct CloseTerminalIntent: AppIntent {
             return .result()
         }
 
-        controller.closeSurface(surfaceView, withConfirmation: false)
+        controller.closeSurface(surfaceView, withConfirmation: false, origin: .user)
         return .result()
     }
 }

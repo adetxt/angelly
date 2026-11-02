@@ -168,6 +168,21 @@
                                     <action selector="newTab:" target="-1" id="KoW-K7-hw5"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Reopen Closed Window" toolTip="Reopens the layout in new terminal sessions." id="rcw-01-item">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="reopenClosedWindow:" target="bbz-4X-AYv" id="rcw-01-action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Recently Closed Windows" id="rcw-02-item">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <menu key="submenu" title="Recently Closed Windows" identifier="recentlyClosedWindows" id="rcw-02-menu">
+                                    <items/>
+                                    <connections>
+                                        <outlet property="delegate" destination="bbz-4X-AYv" id="rcw-02-delegate"/>
+                                    </connections>
+                                </menu>
+                            </menuItem>
                             <menuItem isSeparatorItem="YES" id="m54-Is-iLE"/>
                             <menuItem title="Split Right" id="VUR-Ld-nLx">
                                 <modifierMask key="keyEquivalentModifierMask"/>

@@ -167,12 +167,31 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
             return
         }
 
-        // Restore our tab color and avoid unnecessary `invalidateRestorableState` calls
+        applyState(state, to: c)
+
+        completionHandler(window, nil)
+        guard let mode = state.effectiveFullscreenMode, mode != .native else {
+            // We let AppKit handle native fullscreen
+            return
+        }
+        c.toggleFullscreen(mode: mode)
+    }
+
+    @MainActor
+    static func applyState(
+        _ state: TerminalRestorableState,
+        to c: TerminalController,
+        recovery: ClosedWindowRecoveryContext? = nil
+    ) {
+        guard let window = c.window else { return }
         if let tabColor = state.tabColor {
             (window as? TerminalWindow)?.tabColor = tabColor
         }
 
-        if let group = state.sidebarGroup, let window = window as? TerminalWindow {
+        if var group = state.sidebarGroup, let window = window as? TerminalWindow {
+            if let recovery {
+                group = .init(id: recovery.replacement(for: group.id), info: group.info)
+            }
             TabGroupStore.shared.restore(group)
             window.sidebarGroup = group.id
         }
@@ -182,7 +201,13 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
 
         // Setup our restored state on the controller
         // Find the focused surface in surfaceTree
-        if let focusedStr = state.focusedSurface {
+        if let savedFocus = state.focusedSurface {
+            let focusedStr: String
+            if let recovery, let id = UUID(uuidString: savedFocus) {
+                focusedStr = recovery.replacement(for: id).uuidString
+            } else {
+                focusedStr = savedFocus
+            }
             var foundView: Ghostty.SurfaceView?
             for view in c.surfaceTree where view.id.uuidString == focusedStr {
                 foundView = view
@@ -195,14 +220,6 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
             }
         }
 
-        completionHandler(window, nil)
-        guard let mode = state.effectiveFullscreenMode, mode != .native else {
-            // We let AppKit handle native fullscreen
-            return
-        }
-        // Give the window to AppKit first, then adjust its frame and style
-        // to minimise any visible frame changes.
-        c.toggleFullscreen(mode: mode)
     }
 
     /// This restores the focus state of the surfaceview within the given window. When restoring,

@@ -196,7 +196,7 @@ final class ScriptWindow: NSObject {
         guard NSApp.validateScript(command: command) else { return nil }
 
         if let managedTerminalController = preferredController as? TerminalController {
-            managedTerminalController.closeWindowImmediately()
+            managedTerminalController.closeWindowImmediately(origin: .user)
             return nil
         }
 

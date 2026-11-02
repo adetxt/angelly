@@ -55,6 +55,11 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// For example, terminals executing custom scripts are not restorable.
     private var restorable: Bool = true
 
+    var supportsClosedWindowRecovery: Bool { restorable && !surfaceTree.isEmpty }
+
+    private var closedForRecovery = false
+    private var recoveryDecisionPending = false
+
     /// The configuration derived from the Ghostty config so we don't need to rely on references.
     private(set) var derivedConfig: DerivedConfig
 
@@ -151,6 +156,13 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     private func cancelPendingInitialPresentation() {
         pendingInitialPresentation?.cancel()
         pendingInitialPresentation = nil
+    }
+
+    private func configureWindowCloseButton() {
+        guard let button = window?.standardWindowButton(.closeButton) else { return }
+        // Native tab groups route the red button through _close:, which can close just one tab.
+        button.target = self
+        button.action = #selector(closeWindow(_:))
     }
 
     private func scheduleInitialPresentation(_ block: @escaping () -> Void) {
@@ -322,7 +334,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             ) { target in
                 // Close the window when undoing
                 undoManager.disableUndoRegistration {
-                    target.closeWindow(nil)
+                    target.requestCloseWindow(origin: .automatic)
                 }
 
                 // Register redo action
@@ -397,7 +409,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             ) { target in
                 undoManager.disableUndoRegistration {
                     if confirmUndo {
-                        target.closeWindow(nil)
+                        target.requestCloseWindow(origin: .automatic)
                     } else {
                         target.closeWindowImmediately()
                     }
@@ -706,11 +718,12 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     /// This is called anytime a node in the surface tree is being removed.
     override func closeSurface(
         _ node: SplitTree<Ghostty.SurfaceView>.Node,
-        withConfirmation: Bool = true
+        withConfirmation: Bool = true,
+        origin: CloseOrigin = .user
     ) {
         // If this isn't the root then we're dealing with a split closure.
         if surfaceTree.root != node {
-            super.closeSurface(node, withConfirmation: withConfirmation)
+            super.closeSurface(node, withConfirmation: withConfirmation, origin: origin)
             return
         }
 
@@ -719,24 +732,24 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             if withConfirmation {
                 closeTab(nil)
             } else {
-                closeTabImmediately()
+                closeTabImmediately(origin: origin)
             }
             return
         }
 
         // 1 window, closing the window
         if withConfirmation {
-            closeWindow(nil)
+            requestCloseWindow(origin: origin)
         } else {
-            closeWindowImmediately()
+            closeWindowImmediately(origin: origin)
         }
     }
 
-    func closeTabImmediately(registerRedo: Bool = true) {
+    func closeTabImmediately(registerRedo: Bool = true, origin: CloseOrigin = .automatic) {
         guard let window = window else { return }
         guard let tabGroup = window.tabGroup,
                 tabGroup.windows.count > 1 else {
-            closeWindowImmediately()
+            closeWindowImmediately(origin: origin)
             return
         }
 
@@ -757,7 +770,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                         withTarget: newController,
                         expiresAfter: newController.undoExpiration
                     ) { target in
-                        target.closeTabImmediately()
+                        target.closeTabImmediately(origin: .user)
                     }
                 }
             }
@@ -857,12 +870,38 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     /// Closes the current window (including any other tabs) immediately and without
     /// confirmation. This will setup proper undo state so the action can be undone.
-    func closeWindowImmediately() {
-        guard let window = window else { return }
+    func closeWindowImmediately(origin: CloseOrigin = .automatic) {
+        guard let window = window, !closedForRecovery, !recoveryDecisionPending else { return }
+
+        var recoveryTicket: ClosedWindowStore.CloseTicket?
+        if origin == .user, let app = NSApp.delegate as? AppDelegate,
+           app.closedWindowStore.isPersistenceEnabled {
+            do {
+                recoveryTicket = try app.closedWindowStore.append(ClosedWindowSnapshot.capture(from: self))
+            } catch {
+                recoveryDecisionPending = true
+                let alert = NSAlert()
+                alert.messageText = "Couldn’t Save Window for Recovery"
+                alert.informativeText = "Cancel to keep this window open, or close it without saving its layout. Recently Closed Windows will not be able to reopen it."
+                alert.addButton(withTitle: "Cancel")
+                alert.addButton(withTitle: "Close Without Recovery")
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard let self else { return }
+                    self.recoveryDecisionPending = false
+                    if response == .alertSecondButtonReturn {
+                        // Recheck process state and tab membership after the sheet yields.
+                        self.requestCloseWindow(origin: .withoutRecovery)
+                    }
+                }
+                return
+            }
+        }
+
+        closedForRecovery = true
 
         cancelPendingInitialPresentation()
 
-        registerUndoForCloseWindow()
+        if origin != .recoveryCleanup { registerUndoForCloseWindow(recoveryTicket: recoveryTicket) }
 
         if let tabGroup = window.tabGroup, tabGroup.windows.count > 1 {
             tabGroup.windows.forEach { window in
@@ -871,6 +910,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 // process them on later ticks so we can't just disable undo registration.
                 if let controller = window.windowController as? TerminalController {
                     controller.cancelPendingInitialPresentation()
+                    controller.closedForRecovery = true
                     controller.surfaceTree = .init()
                 }
 
@@ -882,7 +922,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     }
 
     /// Registers undo for closing window(s), handling both single windows and tab groups.
-    private func registerUndoForCloseWindow() {
+    private func registerUndoForCloseWindow(recoveryTicket: ClosedWindowStore.CloseTicket?) {
         guard let undoManager, undoManager.isUndoRegistrationEnabled else { return }
         guard let window else { return }
 
@@ -897,14 +937,18 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 undoManager.registerUndo(
                     withTarget: ghostty,
                     expiresAfter: undoExpiration) { ghostty in
+                        guard recoveryTicket?.isRestored != true else { return }
                         // Restore the undo state
                         let newController = TerminalController(ghostty, with: undoState)
+                        if let recoveryTicket {
+                            (NSApp.delegate as? AppDelegate)?.consumeClosedWindow(recoveryTicket)
+                        }
 
                         // Register redo action
                         undoManager.registerUndo(
                             withTarget: newController,
                             expiresAfter: newController.undoExpiration) { target in
-                                target.closeWindowImmediately()
+                                target.closeWindowImmediately(origin: .user)
                             }
                     }
             }
@@ -954,6 +998,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             withTarget: ghostty,
             expiresAfter: undoExpiration
         ) { ghostty in
+            guard recoveryTicket?.isRestored != true else { return }
             // Restore all windows in the tab group
             let controllers = undoStates.map { undoState in
                 TerminalController(ghostty, with: undoState)
@@ -987,12 +1032,16 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 controllers.last?.window?.makeKeyAndOrderFront(nil)
             }
 
+            if let recoveryTicket {
+                (NSApp.delegate as? AppDelegate)?.consumeClosedWindow(recoveryTicket)
+            }
+
             // Register redo action on the first controller
             undoManager.registerUndo(
                 withTarget: firstController,
                 expiresAfter: firstController.undoExpiration
             ) { target in
-                target.closeWindowImmediately()
+                target.closeWindowImmediately(origin: .user)
             }
         }
     }
@@ -1007,7 +1056,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             .surfaceTree.first(where: { $0.needsConfirmQuit })?
             .window
         else {
-            closeAllWindowsImmediately()
+            closeAllWindowsImmediately(all)
             return
         }
 
@@ -1022,15 +1071,21 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 // This is important so that we avoid losing focus when Stage
                 // Manager is used (#8336)
                 alert.window.orderOut(nil)
-                closeAllWindowsImmediately()
+                closeAllWindowsImmediately(all)
             }
         })
     }
 
-    static private func closeAllWindowsImmediately() {
+    static func closeAllWindowsImmediately(_ controllers: [TerminalController]) {
         let undoManager = (NSApp.delegate as? AppDelegate)?.undoManager
         undoManager?.beginUndoGrouping()
-        all.forEach { $0.closeWindowImmediately() }
+        var visited = Set<ObjectIdentifier>()
+        for controller in controllers {
+            guard let window = controller.window else { continue }
+            let representative = window.tabGroup?.windows.first ?? window
+            guard visited.insert(ObjectIdentifier(representative)).inserted else { continue }
+            controller.closeWindowImmediately(origin: .user)
+        }
         undoManager?.setActionName("Close All Windows")
         undoManager?.endUndoGrouping()
     }
@@ -1042,6 +1097,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         let frame: NSRect
         let surfaceTree: SplitTree<Ghostty.SurfaceView>
         let focusedSurface: UUID?
+        let tabbingIdentifier: String
         let tabIndex: Int?
         weak var tabGroup: NSWindowTabGroup?
         let tabColor: TerminalTabColor
@@ -1050,6 +1106,8 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     convenience init(_ ghostty: Ghostty.App, with undoState: UndoState) {
         self.init(ghostty, withSurfaceTree: undoState.surfaceTree)
+
+        window?.tabbingIdentifier = undoState.tabbingIdentifier
 
         // Show the window and restore its frame
         showWindow(nil)
@@ -1103,6 +1161,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             frame: window.frame,
             surfaceTree: surfaceTree,
             focusedSurface: focusedSurface?.id,
+            tabbingIdentifier: window.tabbingIdentifier,
             tabIndex: window.tabGroup?.windows.firstIndex(of: window),
             tabGroup: window.tabGroup,
             tabColor: (window as? TerminalWindow)?.tabColor ?? .none,
@@ -1202,6 +1261,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // apply this based on the root config but change it later based on surface
         // config (see focused surface change callback).
         syncAppearance(.init(config))
+        configureWindowCloseButton()
     }
 
     /// Setup correct window frame before showing the window
@@ -1300,6 +1360,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         super.windowDidBecomeKey(notification)
         self.relabelTabs()
         self.fixTabBar()
+        configureWindowCloseButton()
     }
 
     override func windowDidMove(_ notification: Notification) {
@@ -1361,7 +1422,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         }
 
         guard surfaceTree.contains(where: { $0.needsConfirmQuit }) else {
-            closeTabImmediately()
+            closeTabImmediately(origin: .user)
             return
         }
 
@@ -1369,7 +1430,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             messageText: "Close Tab?",
             informativeText: "The terminal still has a running process. If you close the tab the process will be killed."
         ) {
-            self.closeTabImmediately()
+            self.closeTabImmediately(origin: .user)
         }
     }
 
@@ -1419,7 +1480,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             defer { undoManager?.endUndoGrouping() }
             if !members.isEmpty && members.count == tabGroup.windows.count {
                 // Whole-window undo rebuilds the native group after its final tab closes.
-                (members[0].windowController as? TerminalController)?.closeWindowImmediately()
+                (members[0].windowController as? TerminalController)?.closeWindowImmediately(origin: .user)
             } else {
                 for member in members.reversed() {
                     (member.windowController as? TerminalController)?.closeTabImmediately()
@@ -1507,6 +1568,10 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     }
 
     @IBAction override func closeWindow(_ sender: Any?) {
+        requestCloseWindow(origin: .user)
+    }
+
+    func requestCloseWindow(origin: CloseOrigin) {
         guard let window = window else { return }
 
         // We need to check all the windows in our tab group for confirmation
@@ -1519,7 +1584,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         guard
             !confirmControllers.isEmpty
         else {
-            closeWindowImmediately()
+            closeWindowImmediately(origin: origin)
             return
         }
         if confirmControllers.count == 1 {
@@ -1529,7 +1594,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                 messageText: "Close Window?",
                 informativeText: "All terminal sessions in this window will be terminated.",
             ) {
-                self.closeWindowImmediately()
+                self.completeConfirmedWindowClose(windows, origin: origin)
             }
             return
         }
@@ -1541,31 +1606,36 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             )
             switch await alert.beginSheetModal(for: window) {
             case .alertFirstButtonReturn:
-                await reviewWindows(confirmControllers, window: window)
+                await reviewWindows(confirmControllers, windows: windows, origin: origin)
             case .alertSecondButtonReturn:
-                closeWindowImmediately()
+                completeConfirmedWindowClose(windows, origin: origin)
             default:
                 break
             }
         }
     }
 
-    private func reviewWindows(_ controllers: [TerminalController], window: NSWindow) async {
+    private func completeConfirmedWindowClose(_ expectedWindows: [NSWindow], origin: CloseOrigin) {
+        guard let window, !closedForRecovery else { return }
+        let current = window.tabGroup?.windows ?? [window]
+        guard Set(current.map(ObjectIdentifier.init)) == Set(expectedWindows.map(ObjectIdentifier.init)) else {
+            requestCloseWindow(origin: origin)
+            return
+        }
+        closeWindowImmediately(origin: origin)
+    }
+
+    private func reviewWindows(_ controllers: [TerminalController], windows: [NSWindow], origin: CloseOrigin) async {
         for controller in controllers {
             let response = await controller.confirmCloseAsync(
                 messageText: "Close Window?",
                 informativeText: "All terminal sessions in this window will be terminated.",
             )
 
-            if [.OK, .alertFirstButtonReturn].contains(response) {
-                // Close this tab
-                controller.closeTabImmediately()
-                continue
-            } else {
-                // Cancel the review
-                return
-            }
+            guard [.OK, .alertFirstButtonReturn].contains(response) else { return }
         }
+        // Keep the complete window intact until every process confirmation succeeds.
+        completeConfirmedWindowClose(windows, origin: origin)
     }
 
     @IBAction func toggleGhosttyFullScreen(_ sender: Any?) {

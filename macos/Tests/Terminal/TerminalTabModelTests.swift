@@ -167,7 +167,7 @@ struct TerminalTabModelTests {
     @Test func undoRestoresEntireGroupInOriginalOrder() async throws {
         var pendingFixture: Fixture? = try Fixture(withSurfaces: true)
         try await pendingFixture?.waitForProcessExit()
-        let (group, undoManager, surfaceIDs) = try autoreleasepool {
+        let (group, undoManager, surfaceIDs, tabbingIdentifier) = try autoreleasepool {
             let fixture = try #require(pendingFixture)
             defer {
                 fixture.close()
@@ -181,7 +181,7 @@ struct TerminalTabModelTests {
             undoManager.beginUndoGrouping()
             fixture.model.closeGroup(group)
             undoManager.endUndoGrouping()
-            return (group, undoManager, surfaceIDs)
+            return (group, undoManager, surfaceIDs, fixture.windows[0].tabbingIdentifier)
         }
         await Task.yield()
         undoManager.undo()
@@ -190,6 +190,7 @@ struct TerminalTabModelTests {
         let restored = NSApp.windows.compactMap { $0 as? TerminalWindow }.filter { $0.sidebarGroup == group }
         defer { restored.forEach { $0.close() } }
         #expect(restored.count == 4)
+        #expect(restored.allSatisfy { $0.tabbingIdentifier == tabbingIdentifier })
         let windows = try #require(restored.first?.tabGroup?.windows)
         #expect(windows.count == 4)
         #expect(windows.compactMap {

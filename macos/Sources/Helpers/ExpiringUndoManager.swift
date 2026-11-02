@@ -55,8 +55,11 @@ class ExpiringUndoManager: UndoManager {
     /// This override ensures that all expiring targets are also cleared when
     /// the undo manager is reset.
     override func removeAllActions() {
-        super.removeAllActions()
+        // Keep proxies alive until the set mutation ends; their deinit calls back here.
+        let targets = expiringTargets
         expiringTargets = []
+        super.removeAllActions()
+        for target in targets { target.expire() }
     }
 
     /// Removes all undo and redo operations involving the specified target.

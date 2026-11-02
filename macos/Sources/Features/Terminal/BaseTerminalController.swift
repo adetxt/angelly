@@ -32,6 +32,8 @@ class BaseTerminalController: NSWindowController,
                               TerminalViewModel,
                               ClipboardConfirmationViewDelegate,
                               FullscreenDelegate {
+    enum CloseOrigin { case user, automatic, withoutRecovery, recoveryCleanup }
+
     /// Weak surface-to-controller ownership independent of AppKit's transient
     /// view and window attachment state.
     private static let surfaceControllers =
@@ -461,10 +463,11 @@ class BaseTerminalController: NSWindowController,
     /// Close a surface from a view.
     func closeSurface(
         _ view: Ghostty.SurfaceView,
-        withConfirmation: Bool = true
+        withConfirmation: Bool = true,
+        origin: CloseOrigin = .user
     ) {
         guard let node = surfaceTree.root?.node(view: view) else { return }
-        closeSurface(node, withConfirmation: withConfirmation)
+        closeSurface(node, withConfirmation: withConfirmation, origin: origin)
     }
 
     /// Close a surface node (which may contain splits), requesting confirmation if necessary.
@@ -472,7 +475,8 @@ class BaseTerminalController: NSWindowController,
     /// This will also insert the proper undo stack information in.
     func closeSurface(
         _ node: SplitTree<Ghostty.SurfaceView>.Node,
-        withConfirmation: Bool = true
+        withConfirmation: Bool = true,
+        origin: CloseOrigin = .user
     ) {
         // This node must be part of our tree
         guard surfaceTree.contains(node) else { return }
@@ -662,9 +666,11 @@ class BaseTerminalController: NSWindowController,
     @objc private func ghosttyDidCloseSurface(_ notification: Notification) {
         guard let target = notification.object as? Ghostty.SurfaceView else { return }
         guard let node = surfaceTree.root?.node(view: target) else { return }
+        let processAlive = (notification.userInfo?["process_alive"] as? Bool) ?? false
         closeSurface(
             node,
-            withConfirmation: (notification.userInfo?["process_alive"] as? Bool) ?? false)
+            withConfirmation: processAlive,
+            origin: processAlive ? .user : .automatic)
     }
 
     @objc private func ghosttyDidNewSplit(_ notification: Notification) {
