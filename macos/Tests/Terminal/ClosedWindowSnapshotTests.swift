@@ -5,6 +5,16 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct ClosedWindowSnapshotTests {
+    @Test func windowedSnapshotDoesNotRequestFullscreen() throws {
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let controller = TerminalController(ghostty)
+        defer { controller.closeWindowImmediately() }
+        let window = try #require(controller.window)
+        #expect(!window.styleMask.contains(.fullScreen))
+        #expect(controller.fullscreenStyle?.isFullscreen == false)
+        #expect(TerminalRestorableState(from: controller).effectiveFullscreenMode == nil)
+    }
+
     @Test func capturesOrderedTabsWithoutDecodingTerminals() throws {
         let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
         let first = TerminalController(ghostty)
@@ -58,6 +68,7 @@ struct ClosedWindowSnapshotTests {
         let snapshot = try ClosedWindowSnapshot.capture(from: first)
         let result = try TerminalController.reopen(snapshot, ghostty: ghostty)
         defer { result.controllers.first?.closeWindowImmediately() }
+        #expect(result.controllers.allSatisfy { $0.fullscreenStyle?.isFullscreen == false })
         #expect(result.controllers.map(\.titleOverride) == ["Work", "Server"])
         #expect(result.controllers[0].window?.tabGroup?.windows.count == 2)
         #expect(result.controllers[0].surfaceTree.count == 2)
