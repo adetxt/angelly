@@ -186,7 +186,7 @@ final class ScriptTerminal: NSObject {
             return nil
         }
 
-        controller.closeSurface(surfaceView, withConfirmation: false)
+        controller.closeSurface(surfaceView, withConfirmation: false, origin: .user)
         return nil
     }
 

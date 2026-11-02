@@ -285,17 +285,18 @@ class QuickTerminalController: BaseTerminalController {
 
     override func closeSurface(
         _ node: SplitTree<Ghostty.SurfaceView>.Node,
-        withConfirmation: Bool = true
+        withConfirmation: Bool = true,
+        origin: CloseOrigin = .user
     ) {
         // If this isn't the root then we're dealing with a split closure.
         if surfaceTree.root != node {
-            super.closeSurface(node, withConfirmation: withConfirmation)
+            super.closeSurface(node, withConfirmation: withConfirmation, origin: origin)
             return
         }
 
         // If this isn't a final leaf then we're dealing with a split closure
         guard case .leaf(let surface) = node else {
-            super.closeSurface(node, withConfirmation: withConfirmation)
+            super.closeSurface(node, withConfirmation: withConfirmation, origin: origin)
             return
         }
 

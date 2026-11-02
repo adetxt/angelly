@@ -7,6 +7,7 @@ def main [
     --scheme: string = "Ghostty"       # Xcode scheme (Ghostty, DockTilePlugin)
     --configuration: string = "Debug"  # Build configuration (Debug, Release, ReleaseLocal)
     --action: string = "build"         # xcodebuild action (build, test, clean, etc.)
+    --only-testing: string = ""        # Optional test target, suite, or method
 ] {
     let project = ($env.FILE_PWD | path join "Ghostty.xcodeproj")
     let build_dir = ($env.FILE_PWD | path join "build")
@@ -15,6 +16,11 @@ def main [
     # special permissions.
     let skip_testing = if $action == "test" {
         [-skip-testing GhosttyUITests]
+    } else {
+        []
+    }
+    let only_testing = if $only_testing != "" {
+        [-only-testing $only_testing]
     } else {
         []
     }
@@ -28,5 +34,6 @@ def main [
         -configuration $configuration
         $"SYMROOT=($build_dir)"
         ...$skip_testing
+        ...$only_testing
         $action)
 }
