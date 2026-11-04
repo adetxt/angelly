@@ -168,6 +168,16 @@
                                     <action selector="newTab:" target="-1" id="KoW-K7-hw5"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Save Workspace…" id="workspace-save-item">
+                                <connections>
+                                    <action selector="saveWorkspace:" target="bbz-4X-AYv" id="workspace-save-action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Open Workspace…" id="workspace-open-item">
+                                <connections>
+                                    <action selector="openWorkspace:" target="bbz-4X-AYv" id="workspace-open-action"/>
+                                </connections>
+                            </menuItem>
                             <menuItem title="Reopen Closed Window" toolTip="Reopens the layout in new terminal sessions." id="rcw-01-item">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
