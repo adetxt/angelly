@@ -50,20 +50,17 @@ struct TerminalTabBar: View {
                 .onChange(of: scrollTarget) { _ in scrollToTarget(proxy) }
             }
 
-            Button(action: model.newTab) {
-                Image(systemName: "plus")
-                    .frame(width: 36, height: Self.height)
-            }
-            .buttonStyle(.plain)
-            .help("New Tab")
-            .accessibilityLabel("New Tab")
-            .background(endDropPosition == nil ? Color.clear : Color.accentColor.opacity(0.15))
-            .tabDropTarget(
-                axis: .horizontal, position: $endDropPosition, edge: nil,
-                canDrop: { model.canDropAtEnd }, drop: { _ in model.dropAtEnd() })
+            TerminalNewTabMenu(tabs: model)
+                .frame(width: 36, height: Self.height)
+                .background(endDropPosition == nil ? Color.clear : Color.accentColor.opacity(0.15))
+                .tabDropTarget(
+                    axis: .horizontal, position: $endDropPosition, edge: nil,
+                    canDrop: { model.canDropAtEnd }, drop: { _ in model.dropAtEnd() })
         }
+        .padding(.leading, model.titlebarLeadingInset)
         .frame(height: Self.height)
         .background(Color(nsColor: .windowBackgroundColor))
+        .ignoresSafeArea(.container, edges: .top)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityIdentifier("Horizontal Tab Bar")
     }
@@ -83,16 +80,13 @@ private struct TerminalTabButton: View {
         HStack(spacing: 0) {
             ZStack {
                 TerminalTabDragButton(
-                    title: item.title, label: item.title, selected: item.isSelected,
+                    title: item.title, label: item.detail, selected: item.isSelected,
                     click: { model.select(item) }, beginDrag: { model.beginDrag(item) }, endDrag: model.endDrag)
                 HStack(spacing: 6) {
                     if let color = item.color {
                         Circle().fill(color).frame(width: 6, height: 6)
                     }
-                    Text(item.title)
-                        .font(.system(size: 12, weight: item.isSelected ? .medium : .regular))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    TerminalTabTitle(item: item, horizontal: true)
                     Spacer(minLength: 0)
                     if item.hasBell {
                         Image(systemName: "bell.fill").font(.system(size: 10))
@@ -121,7 +115,7 @@ private struct TerminalTabButton: View {
                 Rectangle().fill(color).frame(height: 3)
             }
         }
-        .help(item.shortcut.map { "\(item.title) (\($0))" } ?? item.title)
+        .help(item.detail)
         .tabDropTarget(
             axis: .horizontal, position: $dropPosition, edge: dropPosition.map(horizontalEdge(at:)),
             canDrop: { model.dropEdge(on: item) != nil },

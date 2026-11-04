@@ -62,6 +62,31 @@ struct TabSidebarToggleButton: View {
     }
 }
 
+struct TabSidebarTitlebarControls: View {
+    @ObservedObject var model: TerminalTabModel
+    @ObservedObject private var state = TabSidebarState.shared
+
+    var body: some View {
+        HStack(spacing: 0) {
+            TabSidebarToggleButton(state: state)
+            if state.isVisible && model.titlebarHeight > 0 {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        WindowDragRegion()
+                            // Reclaim the inset's 8pt gutter, then reserve the menu and trailing padding.
+                            .frame(width: max(0, state.width - model.titlebarLeadingInset + 8 - 24 - 10), height: 24)
+                            .accessibilityHidden(true)
+                        TerminalNewTabMenu(tabs: model).frame(width: 24, height: 24)
+                    }
+                    .padding(.top, 3)
+                    .padding(.trailing, 10)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Views
 
 struct TabSidebarView: View {
@@ -72,7 +97,11 @@ struct TabSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            if model.titlebarHeight > 0 {
+                Color.clear.frame(height: max(32, model.titlebarHeight))
+            } else {
+                header
+            }
 
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
@@ -100,14 +129,20 @@ struct TabSidebarView: View {
         .frame(width: state.width)
         .frame(maxHeight: .infinity)
         .background(Color.primary.opacity(0.045))
+        .ignoresSafeArea(.container, edges: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("Vertical Tab Sidebar")
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(Color.primary.opacity(0.1))
                 .frame(width: 1)
+                .ignoresSafeArea(.container, edges: .top)
         }
-        .overlay(alignment: .trailing) { resizeHandle }
+        .overlay(alignment: .trailing) {
+            resizeHandle
+                .frame(maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .top)
+        }
     }
 
     /// Dragged in window coordinates: the handle moves with the width it is changing, so
@@ -132,42 +167,24 @@ struct TabSidebarView: View {
 
     private var header: some View {
         HStack(spacing: 2) {
-            Text("TABS")
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.9)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            TabSidebarIconButton(symbol: "plus", help: "New Tab") { model.newTab() }
+            WindowDragRegion()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
+            TerminalNewTabMenu(tabs: model).frame(width: 24, height: 24)
         }
-        .padding(.leading, 16)
+        .padding(.leading, 8)
         .padding(.trailing, 10)
-        .frame(height: 38)
+        .frame(height: max(32, model.titlebarHeight))
     }
 }
 
-private struct TabSidebarIconButton: View {
-    let symbol: String
-    let help: String
-    let action: () -> Void
+/// Lets the empty portion of the sidebar's top row drag the window.
+struct WindowDragRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(hovering ? .primary : .secondary)
-                .frame(width: 24, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(hovering ? 0.1 : 0)))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-        .onHover { hovering = $0 }
+    private final class DragView: NSView {
+        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
     }
 }
 
@@ -184,11 +201,8 @@ private struct TabSidebarRow: View {
                 .fill(item.color ?? (item.isSelected && item.group == nil ? Color.accentColor : .clear))
                 .frame(width: 3, height: 14)
 
-            Text(item.title)
-                .font(.system(size: 13, weight: item.isSelected ? .medium : .regular))
+            TerminalTabTitle(item: item)
                 .foregroundStyle(item.isSelected ? .primary : .secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
 
             Spacer(minLength: 4)
 
@@ -221,6 +235,7 @@ private struct TabSidebarRow: View {
             canDrop: { model.dropEdge(on: item) != nil },
             drop: { _ in model.drop(on: item) })
         .contextMenu { TerminalTabContextMenu(model: model, item: item) }
+        .help(item.detail)
         // Grouped tabs sit under their header, joined to it by a line in the group's color.
         .padding(.leading, item.group == nil ? 0 : 12)
         .overlay(alignment: .leading) {
@@ -233,6 +248,7 @@ private struct TabSidebarRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.detail)
         .accessibilityAddTraits(item.isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(named: "Close Tab") { close() }
     }

@@ -25,8 +25,48 @@ upstream terminal foundation and adds a few personal touches to the macOS app.
 - 🗂️ Tab groups with color coding.
 - ➕ Choose where new tabs open.
 - ♻️ Recover recently closed windows, including after restarting Angelly.
+- Create, open, and safely remove Git worktrees from either tab layout.
 
 Angelly is a personal, vibe-coded project and may have rough edges.
+
+## Git worktrees
+
+Use **Settings > Worktrees** to choose a parent folder (default: `~/worktrees`).
+New worktrees are created at `<parent>/<repository>/<folder>`; changing the
+setting leaves existing worktrees in place.
+
+Use the **+** menu at the top of the sidebar (or at the end of horizontal tabs)
+to open a **New Tab** or **Create Worktree…**. The worktree sheet manages the
+active terminal's repository; you can also choose another repository there.
+Create a new branch from the selected checkout's HEAD, or select an existing local
+branch that isn't already checked out. **Create and Open** starts a new terminal
+tab in the worktree; **Open Tab** opens an existing checkout.
+
+Removal keeps the branch and never uses force. Main and locked checkouts are
+protected, removal refuses worktrees with uncommitted, untracked, or ignored files, and
+Angelly asks you to close or move terminals whose reported working directory
+is inside the worktree. Requires Git from the Xcode Command Line Tools.
+
+Git tabs use a single line with an icon and title. The icon is gray by default,
+green for an open PR, white for a draft PR (adaptive in light mode), purple for
+a merged PR, and red for merge conflicts reported by GitHub or unresolved
+conflicts in the local checkout. Hover a tab for checkout, branch, working-tree, upstream,
+and PR details. Ahead/behind counts use local tracking refs without fetching.
+Metadata refreshes in the background while Angelly is active and follows
+directory and split-focus changes.
+
+GitHub PR details include the PR number and Open, Draft, Merged, Closed, or Conflict state.
+This uses an optional installed [GitHub CLI](https://cli.github.com/), authenticated
+with `gh auth login`, and refreshes about once a minute. **No PR** means GitHub
+CLI found no PR for the branch; **PR unavailable** means lookup failed or the
+CLI/authentication is unavailable. Detached checkouts and repositories without
+remotes do not query PR status.
+
+The **Transparent** titlebar style uses a full-size layout with the window title
+hidden and the traffic lights visible. The sidebar and horizontal tab bar reserve
+space for the window controls. Choose the titlebar style in **Settings > Window**;
+style changes apply to new windows. The branch remains available in tab details
+and native window metadata.
 
 ## Recovering closed windows
 

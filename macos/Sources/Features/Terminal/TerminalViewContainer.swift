@@ -92,7 +92,7 @@ class TerminalViewContainer: NSView {
     func installTabViews(_ model: TerminalTabModel) {
         guard tabSidebar == nil else { return }
 
-        let sidebar = NSHostingView(rootView: TabSidebarView(model: model))
+        let sidebar = NonDraggableHostingView(rootView: TabSidebarView(model: model))
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         sidebar.sizingOptions = []
         addSubview(sidebar)

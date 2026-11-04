@@ -35,6 +35,124 @@ struct TerminalTabModelTests {
         #expect(fixture.windows[0].tabBarIsHidden)
     }
 
+    @Test func sidebarHeaderControlsDoNotInitiateWindowDragging() async throws {
+        let state = TabSidebarState.shared
+        let originalWidth = state.width
+        let wasVisible = state.isVisible
+        if !wasVisible { state.toggle() }
+        defer {
+            state.setWidth(originalWidth)
+            if !wasVisible { state.toggle() }
+        }
+        let window = TransparentTitlebarTerminalWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.enableFullSizeTabContent()
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        let container = TerminalViewContainer { EmptyView() }
+        container.installTabViews(model)
+        let sidebar = try #require(container.subviews.first { $0 is NSHostingView<TabSidebarView> })
+        #expect(!sidebar.mouseDownCanMoveWindow)
+        window.contentView = container
+        let themeFrame = try #require(container.superview)
+        for width: CGFloat in [160, 220, 480] {
+            state.setWidth(width)
+            model.refresh()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            themeFrame.layoutSubtreeIfNeeded()
+            container.layoutSubtreeIfNeeded()
+            sidebar.layoutSubtreeIfNeeded()
+            let plusCenter = NSPoint(x: width - 22, y: container.bounds.maxY - 16)
+            let target = try #require(themeFrame.hitTest(container.convert(plusCenter, to: themeFrame)))
+            #expect(!target.mouseDownCanMoveWindow, "Header click at width \(width) reached \(type(of: target))")
+            #expect(!target.isDescendant(of: sidebar), "Titlebar controls must receive clicks above the sidebar content")
+        }
+        state.toggle()
+        model.refresh()
+        #expect(model.titlebarLeadingInset < 160)
+        state.toggle()
+    }
+
+    @Test func unselectedTabHasRowsBeforeItsFirstSelection() throws {
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[0]
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: fixture.windows[1], ghostty: ghostty)
+        model.refresh()
+        #expect(model.items.count == 4)
+        #expect(model.rows.count == 4)
+        #expect(model.items.first?.isSelected == true)
+    }
+
+    @Test func fullSizeTitlebarKeepsTrafficLightsAndHidesTitle() throws {
+        let window = TransparentTitlebarTerminalWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.enableFullSizeTabContent()
+        window.title = "A title that should remain hidden"
+        #expect(window.styleMask.contains(.fullSizeContentView))
+        #expect(window.titleVisibility == .hidden)
+        #expect(window.titlebarAppearsTransparent)
+        #expect(window.standardWindowButton(.closeButton)?.isHidden == false)
+        #expect(window.standardWindowButton(.miniaturizeButton)?.isHidden == false)
+        #expect(window.standardWindowButton(.zoomButton)?.isHidden == false)
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        model.refresh()
+        #expect(model.titlebarHeight > 0)
+        #expect(model.titlebarLeadingInset > 80)
+    }
+
+    @Test func gitMetadataFollowsFocusedDirectory() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let checkout = directory.appendingPathComponent("repo")
+        try FileManager.default.createDirectory(at: checkout, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for arguments in [["init", "-b", "main"], ["config", "core.hooksPath", "/dev/null"],
+                          ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "Initial"]] {
+            let result = try GitCommandRunner.run(executable: URL(fileURLWithPath: "/usr/bin/git"),
+                                                  arguments: ["-C", checkout.path] + arguments)
+            try #require(result.exitCode == 0)
+        }
+        let linked = try await GitWorktreeService.shared.create(
+            in: checkout, root: directory.appendingPathComponent("worktrees"),
+            folderName: "feature", branch: "feature", newBranch: true)
+        let fixture = try Fixture(withSurfaces: true)
+        defer { fixture.close() }
+        try await fixture.waitForProcessExit()
+        fixture.setWorkingDirectory(checkout.path)
+        try await fixture.waitForGitStatus { $0?.branch == "main" && $0?.isLinkedWorktree == false }
+        #expect(fixture.windows[0].title.hasSuffix(" [main]"))
+        #expect(fixture.model.items.first?.title.hasSuffix(" [main]") == false)
+        fixture.windows[0].windowController.flatMap { $0 as? BaseTerminalController }?.titleOverride = "My task"
+        fixture.setWorkingDirectory(linked.path)
+        try await fixture.waitForGitStatus { $0?.branch == "feature" && $0?.isLinkedWorktree == true }
+        #expect(fixture.windows[0].title == "My task [feature]")
+        #expect(fixture.model.items.first?.title == "My task")
+
+        // A newly selected native tab has its own model, but must render the known status immediately.
+        fixture.setWorkingDirectory(linked.path, index: 1)
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[1]
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let firstSelection = TerminalTabModel(window: fixture.windows[1], ghostty: ghostty)
+        firstSelection.refresh()
+        #expect(firstSelection.items[1].gitStatus?.branch == "feature")
+        #expect(firstSelection.items[1].gitStatus?.indicator == fixture.model.items[0].gitStatus?.indicator)
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[0]
+
+        fixture.setWorkingDirectory(directory.path)
+        try await fixture.waitForGitStatus { $0 == nil }
+        #expect(fixture.windows[0].title == "My task")
+    }
+
     @Test func collapsedGroupKeepsSelectedTabInHeader() throws {
         let fixture = try Fixture()
         defer { fixture.close() }
@@ -311,6 +429,21 @@ struct TerminalTabModelTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
             try #require(controllers.allSatisfy({ $0.surfaceTree.allSatisfy(\.processExited) }))
+        }
+
+        func setWorkingDirectory(_ path: String, index: Int = 0) {
+            guard let surface = controllers[index].surfaceTree.first else { return }
+            surface.pwd = path
+            controllers[index].focusedSurfaceDidChange(to: surface)
+            model.refresh()
+        }
+
+        func waitForGitStatus(_ matches: (GitTabStatus?) -> Bool) async throws {
+            for _ in 0..<250 {
+                if matches(model.items.first?.gitStatus) { return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            try #require(matches(model.items.first?.gitStatus))
         }
 
         func close() {

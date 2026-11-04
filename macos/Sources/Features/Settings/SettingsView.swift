@@ -7,6 +7,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case window = "Window"
     case behavior = "Behavior"
     case keyboard = "Keyboard"
+    case worktrees = "Worktrees"
     case updates = "Updates"
 
     var id: Self { self }
@@ -19,6 +20,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .window: return "macwindow"
         case .behavior: return "slider.horizontal.3"
         case .keyboard: return "keyboard"
+        case .worktrees: return "arrow.triangle.branch"
         case .updates: return "arrow.down.circle"
         }
     }
@@ -108,6 +110,9 @@ struct SettingsView: View {
                          options: ["true", "false", "left", "right"],
                          label: { ["left": "Left Option only", "right": "Right Option only"][$0] ?? enumLabel($0) },
                          model: model)
+
+        case .worktrees:
+            WorktreeFolderSetting()
 
         case .updates:
             ConfigPicker("Automatic updates", key: "auto-update",
