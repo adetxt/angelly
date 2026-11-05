@@ -8,6 +8,33 @@ import UniformTypeIdentifiers
 @Suite(.serialized)
 @MainActor
 struct TerminalTabModelTests {
+    @Test(arguments: [
+        ("engineering@Administrators-MacBook-Air:~/worktrees/angelly/feat-agentic", "~/worktrees/angelly/feat-agentic"),
+        ("user@host:/tmp/project with spaces", "/tmp/project with spaces"),
+        ("user@host:~", "~"),
+        ("🔔 user@host:~/project", "🔔 ~/project"),
+        ("~/project", "~/project"),
+        ("vim main.swift", "vim main.swift"),
+        ("Build: running", "Build: running"),
+        ("user@host: running", "user@host: running"),
+    ])
+    func shellTabTitleShowsOnlyThePath(title: String, expected: String) throws {
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        fixture.windows[0].title = title
+        fixture.model.refresh()
+        #expect(fixture.model.items[0].title == expected)
+    }
+
+    @Test func customTabTitleKeepsItsUserAndHostText() throws {
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        let controller = try #require(fixture.windows[0].windowController as? BaseTerminalController)
+        controller.titleOverride = "user@host:~/my task"
+        fixture.model.refresh()
+        #expect(fixture.model.items[0].title == "user@host:~/my task")
+    }
+
     @Test func interactiveSidebarResizeDoesNotRebuildViewsOrWritePreferences() throws {
         let state = TabSidebarState.shared
         let oldWidth = state.width
