@@ -1358,6 +1358,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
     override func windowDidBecomeKey(_ notification: Notification) {
         super.windowDidBecomeKey(notification)
+        tabModel?.refresh()
         self.relabelTabs()
         self.fixTabBar()
         configureWindowCloseButton()
@@ -1386,6 +1387,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     }
 
     func windowDidBecomeMain(_ notification: Notification) {
+        tabModel?.refresh()
         // Whenever we get focused, use that as our last window position for
         // restart. This differs from Terminal.app but matches iTerm2 behavior
         // and I think its sensible.

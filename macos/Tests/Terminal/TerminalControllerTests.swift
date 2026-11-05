@@ -54,6 +54,18 @@ struct TerminalControllerTests {
         #expect(placement.group == fixture.group)
     }
 
+    @Test func becomingKeyRefreshesTabsBeforeTheNextRunLoop() throws {
+        let fixture = try Fixture()
+        defer { fixture.tearDown() }
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[0]
+        fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[1]
+        fixture.controllers[1].windowDidBecomeKey(
+            Notification(name: NSWindow.didBecomeKeyNotification, object: fixture.windows[1]))
+        let model = try #require(fixture.controllers[1].tabModel)
+        #expect(model.items.count == 4)
+        #expect(model.items[1].isSelected)
+    }
+
     @Test(arguments: [("current", 0, 0), ("end", 0, 3), ("current", 3, 3), ("end", 3, 3)])
     func placementFromUngroupedTabStaysOutside(position: String, parent: Int, anchor: Int) throws {
         let fixture = try Fixture()

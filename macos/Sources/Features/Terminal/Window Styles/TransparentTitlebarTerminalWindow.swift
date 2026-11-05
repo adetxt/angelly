@@ -3,6 +3,20 @@ import AppKit
 /// A terminal window style that provides a transparent titlebar effect. With this effect, the titlebar
 /// matches the background color of the window.
 class TransparentTitlebarTerminalWindow: TerminalWindow {
+    private(set) var usesFullSizeTabContent = false
+
+    func enableFullSizeTabContent() {
+        usesFullSizeTabContent = true
+        styleMask.insert(.fullSizeContentView)
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+    }
+
+    override var title: String {
+        didSet {
+            if usesFullSizeTabContent { titleVisibility = .hidden }
+        }
+    }
     /// Stores the last surface configuration to reapply appearance when needed.
     /// This is necessary because various macOS operations (tab switching, tab bar
     /// visibility changes) can reset the titlebar appearance.
@@ -96,7 +110,7 @@ class TransparentTitlebarTerminalWindow: TerminalWindow {
             let isTransparentTitlebar = derivedConfig.macosTitlebarStyle == .transparent ||
             derivedConfig.macosTitlebarStyle == .tabs
 
-            titlebarView.layer?.backgroundColor = (isGlassStyle && isTransparentTitlebar)
+            titlebarView.layer?.backgroundColor = (usesFullSizeTabContent || (isGlassStyle && isTransparentTitlebar))
                 ? NSColor.clear.cgColor
                 : preferredBackgroundColor?.cgColor
         }
@@ -122,7 +136,7 @@ class TransparentTitlebarTerminalWindow: TerminalWindow {
 
         // Setup the titlebar background color to match ours
         titlebarContainer.wantsLayer = true
-        titlebarContainer.layer?.backgroundColor = preferredBackgroundColor?.cgColor
+        titlebarContainer.layer?.backgroundColor = usesFullSizeTabContent ? NSColor.clear.cgColor : preferredBackgroundColor?.cgColor
 
         // See the docs for the function that sets this to true on why
         effectViewIsHidden = false

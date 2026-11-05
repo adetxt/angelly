@@ -111,6 +111,21 @@ class BaseTerminalController: NSWindowController,
     /// The last computed title from the focused surface (without the override).
     private var lastComputedTitle: String = "😇"
 
+    var titlebarBranch: String? {
+        didSet {
+            if titlebarBranch != oldValue { applyTitleToWindow() }
+        }
+    }
+
+    /// Keeps branch decoration out of tab labels and rename fields.
+    var tabTitle: String {
+        titlebarBranch == nil ? (window?.title ?? terminalTitle) : terminalTitle
+    }
+
+    private var terminalTitle: String {
+        titleOverride.map { computeTitle(title: $0, bell: focusedSurface?.bell ?? false) } ?? lastComputedTitle
+    }
+
     /// The time that undo/redo operations that contain running ptys are valid for.
     var undoExpiration: Duration {
         ghostty.config.undoTimeout
@@ -435,7 +450,7 @@ class BaseTerminalController: NSWindowController,
         alert.alertStyle = .informational
 
         let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
-        textField.stringValue = titleOverride ?? window.title
+        textField.stringValue = titleOverride ?? tabTitle
         alert.accessoryView = textField
 
         alert.addButton(withTitle: "OK")
@@ -907,6 +922,7 @@ class BaseTerminalController: NSWindowController,
             // There is no surface to listen to titles for.
             titleDidChange(to: "😇")
         }
+        NotificationCenter.default.post(name: .terminalWindowTabDidChangeNotification, object: window)
     }
 
     private func computeTitle(title: String, bell: Bool) -> String {
@@ -926,18 +942,13 @@ class BaseTerminalController: NSWindowController,
     private func applyTitleToWindow() {
         guard let window else { return }
 
-        if let titleOverride {
-            window.title = computeTitle(
-                title: titleOverride,
-                bell: focusedSurface?.bell ?? false)
-            return
-        }
-
-        window.title = lastComputedTitle
+        let title = terminalTitle
+        window.title = titlebarBranch.map { "\(title) [\($0)]" } ?? title
     }
 
     func pwdDidChange(to: URL?) {
         guard let window else { return }
+        NotificationCenter.default.post(name: .terminalWindowTabDidChangeNotification, object: window)
 
         if derivedConfig.macosTitlebarProxyIcon == .visible {
             // Use the 'to' URL directly

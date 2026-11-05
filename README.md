@@ -25,31 +25,9 @@ upstream terminal foundation and adds a few personal touches to the macOS app.
 - 🗂️ Tab groups with color coding.
 - ➕ Choose where new tabs open.
 - ♻️ Recover recently closed windows, including after restarting Angelly.
+- Create, open, and safely remove Git worktrees from either tab layout.
 
 Angelly is a personal, vibe-coded project and may have rough edges.
-
-## Recovering closed windows
-
-With recovery enabled, the red window button saves the whole window's layout
-before closing it.
-
-Use **File > Reopen Closed Window**, or choose an older window from
-**File > Recently Closed Windows**. Closing a new window after your working
-window keeps both in history. The history retains up to 20 windows within a
-10 MiB limit and survives restarting Angelly, even after Undo expires.
-
-Recovery opens new terminal sessions with the saved tabs, splits, titles,
-groups, and available working directories. It cannot resume terminated
-processes or restore scrollback. Individual tabs closed inside a surviving
-window still use the existing temporary Undo.
-
-The default `window-save-state = always` enables recovery. `never` disables
-it and clears saved history; `default` follows the macOS window preservation
-preference. Use **Clear Recently Closed Windows** to delete saved history.
-Custom-command terminals and the quick terminal are excluded. If a window
-cannot be saved, Angelly keeps it open unless you choose **Close Without
-Recovery**. Cmd-Q continues to preserve windows left open through the usual
-macOS restoration behavior.
 
 ## Project direction
 

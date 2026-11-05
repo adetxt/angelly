@@ -893,7 +893,7 @@ extension TerminalWindow: TabTitleEditorDelegate {
             return targetWindow.title
         }
 
-        return targetController.titleOverride ?? targetWindow.title
+        return targetController.titleOverride ?? targetController.tabTitle
     }
 
     func tabTitleEditor(

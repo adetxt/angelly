@@ -7,6 +7,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case window = "Window"
     case behavior = "Behavior"
     case keyboard = "Keyboard"
+    case worktrees = "Worktrees"
     case updates = "Updates"
 
     var id: Self { self }
@@ -19,6 +20,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .window: return "macwindow"
         case .behavior: return "slider.horizontal.3"
         case .keyboard: return "keyboard"
+        case .worktrees: return "arrow.triangle.branch"
         case .updates: return "arrow.down.circle"
         }
     }
@@ -27,6 +29,8 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @State private var category: SettingsCategory? = .font
+    @AppStorage(HorizontalNewTabButtonPlacement.defaultsKey, store: UserDefaults.ghostty)
+    private var horizontalNewTabButtonPlacement = HorizontalNewTabButtonPlacement.defaultValue
 
     var body: some View {
         HStack(spacing: 0) {
@@ -78,6 +82,11 @@ struct SettingsView: View {
             ConfigPicker("Titlebar style", key: "macos-titlebar-style",
                          options: ["native", "transparent", "tabs", "hidden"],
                          label: enumLabel, model: model)
+            Picker("New button in horizontal tabs", selection: $horizontalNewTabButtonPlacement) {
+                ForEach(HorizontalNewTabButtonPlacement.allCases) { placement in
+                    Text(placement.label).tag(placement)
+                }
+            }
             ConfigPicker("Restore windows", key: "window-save-state",
                          options: ["always", "never", "default"],
                          label: { $0 == "default" ? "Follow macOS" : enumLabel($0) },
@@ -108,6 +117,9 @@ struct SettingsView: View {
                          options: ["true", "false", "left", "right"],
                          label: { ["left": "Left Option only", "right": "Right Option only"][$0] ?? enumLabel($0) },
                          model: model)
+
+        case .worktrees:
+            WorktreeFolderSetting()
 
         case .updates:
             ConfigPicker("Automatic updates", key: "auto-update",
