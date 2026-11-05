@@ -119,7 +119,12 @@ class BaseTerminalController: NSWindowController,
 
     /// Keeps branch decoration out of tab labels and rename fields.
     var tabTitle: String {
-        titlebarBranch == nil ? (window?.title ?? terminalTitle) : terminalTitle
+        let title = titlebarBranch == nil ? (window?.title ?? terminalTitle) : terminalTitle
+        guard titleOverride == nil else { return title }
+        return title.replacingOccurrences(
+            of: #"^((?:🔔 )?)[^@\s]+@[^:\s]+:(?=/|~(?:/|$))"#,
+            with: "$1",
+            options: .regularExpression)
     }
 
     private var terminalTitle: String {
