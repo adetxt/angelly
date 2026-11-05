@@ -143,6 +143,8 @@ struct TabSidebarView: View {
                     .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1), value: model.rows.map(\.id))
                 }
             }
+
+            AgentQuotaFooter(store: .shared)
         }
         .frame(maxWidth: .infinity)
         .frame(maxHeight: .infinity)

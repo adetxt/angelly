@@ -31,6 +31,8 @@ struct SettingsView: View {
     @State private var category: SettingsCategory? = .font
     @AppStorage(HorizontalNewTabButtonPlacement.defaultsKey, store: UserDefaults.ghostty)
     private var horizontalNewTabButtonPlacement = HorizontalNewTabButtonPlacement.defaultValue
+    @AppStorage(AgentQuotaPreferences.visibilityKey, store: UserDefaults.ghostty)
+    private var showsAIQuotaTracker = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,6 +70,7 @@ struct SettingsView: View {
             ConfigTextField("Background opacity", key: "background-opacity", model: model)
             ConfigPicker("Background blur", key: "background-blur",
                          options: ["true", "false"], label: enumLabel, model: model)
+            Toggle("Show AI quota tracker", isOn: $showsAIQuotaTracker)
 
         case .cursor:
             ConfigPicker("Style", key: "cursor-style",
