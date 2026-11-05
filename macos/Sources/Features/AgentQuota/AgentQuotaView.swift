@@ -81,9 +81,6 @@ private struct AgentQuotaButton: View {
                         .trim(from: 0, to: window.remainingPercent / 100)
                         .stroke(Color.primary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                } else if state.error != .notSignedIn {
-                    // Not signed in shows an empty (0%) ring; other failures show a dashed one.
-                    Circle().stroke(Color.primary, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
                 }
                 Image(provider.logo)
                     .resizable()
