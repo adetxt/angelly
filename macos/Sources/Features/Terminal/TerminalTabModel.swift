@@ -126,6 +126,9 @@ final class TerminalTabModel: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var titlebarHeight: CGFloat = 0
     @Published private(set) var titlebarLeadingInset: CGFloat = 0
+    @Published private(set) var directoryContext: TerminalDirectoryContext?
+    private(set) var titlebarContentWidth: CGFloat = 0
+    @Published private(set) var showsTitlebarHeader = false
 
     var selectedRowID: RowID? {
         rows.first { row in
@@ -152,7 +155,10 @@ final class TerminalTabModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private weak var observedGroup: NSWindowTabGroup?
     private var groupObservations: [NSKeyValueObservation] = []
+    private weak var observedSurface: Ghostty.SurfaceView?
+    private var directoryObservation: AnyCancellable?
     private weak var sidebarTitlebarAccessory: NSTitlebarAccessoryViewController?
+    private weak var directoryTitlebarAccessory: NSTitlebarAccessoryViewController?
     // Each native tab owns a model; snapshots must survive switching between those models.
     private static var gitStatuses: [URL: GitTabStatus] = [:]
     private var gitDirectories: Set<URL> = []
@@ -178,6 +184,8 @@ final class TerminalTabModel: ObservableObject {
             center.publisher(for: NSWindow.didResizeNotification),
             center.publisher(for: NSWindow.didEnterFullScreenNotification),
             center.publisher(for: NSWindow.didExitFullScreenNotification),
+            center.publisher(for: .fullscreenDidEnter),
+            center.publisher(for: .fullscreenDidExit),
             center.publisher(for: NSApplication.didBecomeActiveNotification),
             center.publisher(for: NSWindow.willCloseNotification),
             center.publisher(for: .terminalWindowBellDidChangeNotification),
@@ -196,12 +204,21 @@ final class TerminalTabModel: ObservableObject {
 
         // Both custom layouts replace the native tab bar.
         (window as? TerminalWindow)?.tabBarIsHidden = true
-        TabSidebarState.shared.$isVisible
+        if #available(macOS 26, *), window is TitlebarTabsTahoeTerminalWindow {
+            window.toolbar = nil
+        }
+        TabSidebarState.shared.$isVisible.combineLatest(TabSidebarState.shared.widthPublisher)
             .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.refresh()
+            .sink { [weak self] visible, width in
+                guard let self, let window = self.window else { return }
+                self.refreshTitlebarInsets(window, sidebarVisible: visible, sidebarWidth: width)
             }
+            .store(in: &cancellables)
+
+        TabSidebarState.shared.resizingPublisher
+            .dropFirst()
+            .filter { !$0 }
+            .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
 
         TabGroupStore.shared.$groups
@@ -222,6 +239,16 @@ final class TerminalTabModel: ObservableObject {
             sidebarTitlebarAccessory = accessory
             // Same as the other titlebar accessories: adding resets this, so it comes after.
             accessory.view.translatesAutoresizingMaskIntoConstraints = false
+
+            if !(window is HiddenTitlebarTerminalWindow) {
+                let directoryAccessory = NSTitlebarAccessoryViewController()
+                directoryAccessory.layoutAttribute = .right
+                directoryAccessory.view = TerminalTitlebarContainer(model: self)
+                window.addTitlebarAccessoryViewController(directoryAccessory)
+                directoryTitlebarAccessory = directoryAccessory
+                directoryAccessory.view.translatesAutoresizingMaskIntoConstraints = false
+                window.titleVisibility = .hidden
+            }
         }
     }
 
@@ -231,7 +258,7 @@ final class TerminalTabModel: ObservableObject {
     }
 
     func refresh() {
-        guard let window else { return }
+        guard let window, !TabSidebarState.shared.isResizing else { return }
 
         let group = window.tabGroup
         observe(group)
@@ -240,6 +267,7 @@ final class TerminalTabModel: ObservableObject {
         let selected = group?.selectedWindow ?? window
         guard selected === window || rows.isEmpty else { return }
         refreshTitlebarInsets(window)
+        observeDirectory(of: (selected.windowController as? BaseTerminalController)?.focusedSurface)
 
         // Publishes only when a group lost its last tab, so this can't loop back here.
         let store = TabGroupStore.shared
@@ -263,12 +291,18 @@ final class TerminalTabModel: ObservableObject {
                 color: info == nil ? (tab as? TerminalWindow)?.tabColor.displayColor.map(Color.init(nsColor:)) : nil,
                 shortcut: shortcut,
                 hasBell: (tab.windowController as? BaseTerminalController)?.bell ?? false,
-                isSelected: tab === selected,
+                // Every window shows its own list only while it is the selected tab, so a list
+                // prepared while hidden must already highlight its own window.
+                isSelected: tab === window,
                 group: info == nil ? nil : (tab as? TerminalWindow)?.sidebarGroup,
                 groupColor: info?.color.displayColor.map(Color.init(nsColor:)),
                 gitStatus: status)
         }
         let newRows = Self.rows(for: newItems, groups: groups)
+        let context = TerminalDirectoryContext(
+            workingDirectory: gitDirectory(for: window),
+            gitStatus: newItems.first(where: \.isSelected)?.gitStatus)
+        if directoryContext != context { directoryContext = context }
 
         // A list that has never shown anything appears at once; fading in every row would
         // flash an empty list when a new tab opens.
@@ -286,12 +320,14 @@ final class TerminalTabModel: ObservableObject {
         if selected === window { refreshGitStatuses(in: newItems) }
     }
 
-    private func refreshTitlebarInsets(_ window: NSWindow) {
+    private func refreshTitlebarInsets(_ window: NSWindow, sidebarVisible: Bool? = nil, sidebarWidth: CGFloat? = nil) {
+        let hasTitlebar = window.styleMask.contains(.titled) && !window.styleMask.contains(.fullScreen)
+        let hasHeader = hasTitlebar && directoryTitlebarAccessory != nil
         let fullSize = (window as? TransparentTitlebarTerminalWindow)?.usesFullSizeTabContent == true
-            && !window.styleMask.contains(.fullScreen)
+            && hasTitlebar
         let height = fullSize ? max(0, window.frame.height - window.contentLayoutRect.maxY) : 0
         var leading: CGFloat = 0
-        if height > 0 {
+        if height > 0 || hasHeader {
             let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
                 .compactMap { window.standardWindowButton($0) }
             let controlsRight = buttons.filter { !$0.isHidden }
@@ -308,12 +344,39 @@ final class TerminalTabModel: ObservableObject {
         }
         if titlebarHeight != height { titlebarHeight = height }
         if titlebarLeadingInset != leading { titlebarLeadingInset = leading }
+        if let accessory = directoryTitlebarAccessory {
+            let controls = sidebarTitlebarAccessory?.view
+            let controlsLeft = controls.map { $0.convert($0.bounds, to: window.contentView).minX } ?? 80
+            let controlsRight = controlsLeft + (controls?.fittingSize.width ?? 34)
+            let otherAccessories = window.titlebarAccessoryViewControllers.filter {
+                $0 !== accessory && $0.layoutAttribute == .right && !$0.view.isHidden
+            }.reduce(CGFloat(0)) { $0 + $1.view.frame.width }
+            let width = max(0, window.frame.width - controlsRight - otherAccessories)
+            if let header = accessory.view as? TerminalTitlebarContainer {
+                header.updateGeometry(width: width, leading: controlsRight,
+                                      sidebarWidth: sidebarWidth ?? TabSidebarState.shared.width,
+                                      sidebarVisible: sidebarVisible ?? TabSidebarState.shared.isVisible)
+                titlebarContentWidth = header.contextView.frame.width
+            }
+            if showsTitlebarHeader != hasHeader { showsTitlebarHeader = hasHeader }
+            accessory.view.isHidden = !hasHeader
+        }
     }
 
     private func gitDirectory(for window: NSWindow?) -> URL? {
         guard let path = (window?.windowController as? BaseTerminalController)?.focusedSurface?.pwd,
-              !path.isEmpty else { return nil }
+              path.hasPrefix("/") else { return nil }
         return URL(fileURLWithPath: path).standardizedFileURL
+    }
+
+    private func observeDirectory(of surface: Ghostty.SurfaceView?) {
+        guard observedSurface !== surface else { return }
+        observedSurface = surface
+        directoryObservation = surface?.$pwd
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
     }
 
     private func refreshGitStatuses(in items: [Item]) {

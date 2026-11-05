@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct GitWorktree: Identifiable, Sendable {
     let directory: URL
@@ -36,6 +37,28 @@ actor GitWorktreeService {
         return GitWorktreeSnapshot(directory: main.directory, worktrees: worktrees, branches: branches)
     }
 
+    func loadRepositories(from directories: [URL], worktreeRoot: URL) -> [GitWorktreeSnapshot] {
+        let files = FileManager.default
+        func folders(in directory: URL) -> [URL] {
+            let children = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey],
+                                                          options: [.skipsHiddenFiles])) ?? []
+            return children.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        }
+
+        // Created worktrees live at <root>/<repository>/<worktree>; don't scan arbitrary directory trees.
+        let groups = folders(in: worktreeRoot)
+        let candidates = directories + groups + groups.flatMap { folders(in: $0) }
+        var repositories: [URL: GitWorktreeSnapshot] = [:]
+        var visited: Set<URL> = []
+        for candidate in candidates {
+            let directory = candidate.resolvingSymlinksInPath()
+            guard visited.insert(directory).inserted, let snapshot = try? load(from: directory) else { continue }
+            repositories[snapshot.directory] = snapshot
+            visited.formUnion(snapshot.worktrees.map(\.directory))
+        }
+        return repositories.values.sorted { $0.directory.path.localizedStandardCompare($1.directory.path) == .orderedAscending }
+    }
+
     func tabStatus(from directory: URL) throws -> GitTabStatus? {
         guard (try? git(["rev-parse", "--is-inside-work-tree"], in: directory, timeout: 5)) == "true\n" else { return nil }
         let root = try git(["rev-parse", "--show-toplevel"], in: directory, timeout: 5)
@@ -44,8 +67,130 @@ actor GitWorktreeService {
         guard let worktree = worktrees.first(where: { $0.directory == checkout }) else { return nil }
         let output = try git(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=normal"], in: checkout, timeout: 5)
         let remotes = try git(["remote"], in: checkout, timeout: 5)
-        return try GitTabStatus.parse(output, directory: checkout, isLinkedWorktree: !worktree.isMain,
-                                      hasRemote: !remotes.isEmpty)
+        var status = try GitTabStatus.parse(output, directory: checkout, isLinkedWorktree: !worktree.isMain,
+                                           hasRemote: !remotes.isEmpty)
+        let remoteNames = remotes.split(separator: "\n").map(String.init)
+        if let remote = remoteNames.contains("origin") ? "origin" : remoteNames.first,
+           let remoteURL = try? git(["remote", "get-url", "--", remote], in: checkout, timeout: 5),
+           let repository = GitHubPullRequestService.repositoryName(
+            from: remoteURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+           let owner = repository.split(separator: "/").first {
+            status.ownerAvatarURL = URL(string: "https://github.com/\(owner).png?size=32")
+        }
+        if status.hasChanges {
+            do {
+                // Compare the final working copy with HEAD so staged edits aren't counted twice.
+                let base = status.head == "(initial)"
+                    ? try git(["hash-object", "-t", "tree", "/dev/null"], in: checkout, timeout: 5)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    : "HEAD"
+                let counts = try Self.parseNumstat(git(["diff", "--numstat", "-z", "--find-renames", "--no-ext-diff",
+                                                        "--no-textconv", "--ignore-submodules=all", base, "--"],
+                                                       in: checkout, timeout: 5, maxOutputBytes: 1_048_576))
+                let untracked = try untrackedAdditions(in: checkout)
+                guard untracked <= Int.max - counts.additions else {
+                    throw Failure(message: "Couldn't read Git's line changes.")
+                }
+                status.lineChanges = GitLineChanges(additions: counts.additions + untracked, deletions: counts.deletions)
+            } catch {
+                status.lineChanges = nil
+            }
+        }
+        return status
+    }
+
+    static func parseNumstat(_ output: String) throws -> (additions: Int, deletions: Int) {
+        guard output.isEmpty || output.last == "\0" else {
+            throw Failure(message: "Couldn't read Git's line changes.")
+        }
+        let records = output.split(separator: "\0", omittingEmptySubsequences: false)
+        var additions = 0
+        var deletions = 0
+        var index = 0
+        while index < records.count - 1 {
+            let fields = records[index].split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+            guard fields.count == 3 else { throw Failure(message: "Couldn't read Git's line changes.") }
+            if fields[0] != "-" || fields[1] != "-" {
+                guard let added = Int(fields[0]), let deleted = Int(fields[1]), added >= 0, deleted >= 0,
+                      added <= Int.max - additions, deleted <= Int.max - deletions else {
+                    throw Failure(message: "Couldn't read Git's line changes.")
+                }
+                additions += added
+                deletions += deleted
+            }
+            // A rename has two further NUL-delimited paths, even if they contain tabs or newlines.
+            if fields[2].isEmpty {
+                guard index + 2 < records.count - 1 else {
+                    throw Failure(message: "Couldn't read Git's renamed paths.")
+                }
+                index += 2
+            }
+            index += 1
+        }
+        return (additions, deletions)
+    }
+
+    private func untrackedAdditions(in directory: URL) throws -> Int {
+        let paths = try git(["ls-files", "--others", "--exclude-standard", "-z"], in: directory, timeout: 5, maxOutputBytes: 1_048_576)
+            .split(separator: "\0")
+        guard paths.count <= 1_000 else {
+            throw Failure(message: "Too many untracked files to count line changes.")
+        }
+        let root = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard root >= 0 else { throw CocoaError(.fileReadUnknown) }
+        defer { close(root) }
+        var remainingBytes = 16 * 1_024 * 1_024
+        var additions = 0
+        let deadline = Date().addingTimeInterval(2)
+        for path in paths {
+            guard Date() < deadline else { throw Failure(message: "Counting untracked line changes timed out.") }
+            let descriptor = try Self.openUntrackedFile(String(path), relativeTo: root)
+            guard descriptor >= 0 else { continue }
+            let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? file.close() }
+            var metadata = stat()
+            guard fstat(descriptor, &metadata) == 0 else { throw CocoaError(.fileReadUnknown) }
+            guard metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else { continue }
+            var lines = 0
+            var bytesRead = 0
+            var lastByte: UInt8?
+            while let chunk = try file.read(upToCount: min(32_768, remainingBytes + 1)), !chunk.isEmpty {
+                guard Date() < deadline else { throw Failure(message: "Counting untracked line changes timed out.") }
+                remainingBytes -= chunk.count
+                guard remainingBytes >= 0 else {
+                    throw Failure(message: "Untracked files are too large to count line changes.")
+                }
+                // Git identifies binary content by a NUL in its first 8,000 bytes.
+                if bytesRead < 8_000, chunk.prefix(8_000 - bytesRead).contains(0) {
+                    lines = 0
+                    lastByte = nil
+                    break
+                }
+                bytesRead += chunk.count
+                lines += chunk.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
+                lastByte = chunk.last
+            }
+            additions += lines + (lastByte != nil && lastByte != 10 ? 1 : 0)
+        }
+        return additions
+    }
+
+    private static func openUntrackedFile(_ path: String, relativeTo root: Int32) throws -> Int32 {
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return -1 }
+        var parent = dup(root)
+        guard parent >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        for (index, component) in components.enumerated() {
+            let flags = O_RDONLY | O_NOFOLLOW | O_NONBLOCK | (index < components.count - 1 ? O_DIRECTORY : 0)
+            let descriptor = openat(parent, String(component), flags)
+            close(parent)
+            guard descriptor >= 0 else {
+                if errno == ELOOP || errno == ENOENT || errno == ENOTDIR { return -1 }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            parent = descriptor
+        }
+        return parent
     }
 
     func create(
@@ -128,11 +273,14 @@ actor GitWorktreeService {
     }
 
     @discardableResult
-    private func git(_ arguments: [String], in directory: URL, timeout: TimeInterval? = nil) throws -> String {
+    private func git(
+        _ arguments: [String], in directory: URL, timeout: TimeInterval? = nil, maxOutputBytes: Int? = nil
+    ) throws -> String {
         let result: GitCommandRunner.Result
         do {
             result = try GitCommandRunner.run(executable: URL(fileURLWithPath: "/usr/bin/git"),
-                                               arguments: ["-C", directory.path] + arguments, timeout: timeout)
+                                               arguments: ["-C", directory.path] + arguments, timeout: timeout,
+                                               maxOutputBytes: maxOutputBytes)
         } catch {
             throw Failure(message: "Couldn't run Git. Install the Xcode Command Line Tools and try again.\n\(error.localizedDescription)")
         }

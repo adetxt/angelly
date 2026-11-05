@@ -7,6 +7,8 @@ struct TerminalTabBar: View {
 
     @ObservedObject var model: TerminalTabModel
     @ObservedObject private var sidebarState = TabSidebarState.shared
+    @AppStorage(HorizontalNewTabButtonPlacement.defaultsKey, store: UserDefaults.ghostty)
+    private var newButtonPlacement = HorizontalNewTabButtonPlacement.defaultValue
     @State private var endDropPosition: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -50,17 +52,17 @@ struct TerminalTabBar: View {
                 .onChange(of: scrollTarget) { _ in scrollToTarget(proxy) }
             }
 
-            TerminalNewTabMenu(tabs: model)
-                .frame(width: 36, height: Self.height)
-                .background(endDropPosition == nil ? Color.clear : Color.accentColor.opacity(0.15))
-                .tabDropTarget(
-                    axis: .horizontal, position: $endDropPosition, edge: nil,
-                    canDrop: { model.canDropAtEnd }, drop: { _ in model.dropAtEnd() })
+            if !newButtonPlacement.showsInTitlebar(sidebarVisible: sidebarState.isVisible, titlebarAvailable: model.showsTitlebarHeader) {
+                TerminalNewTabMenu(tabs: model)
+                    .frame(width: 36, height: Self.height)
+                    .background(endDropPosition == nil ? Color.clear : Color.accentColor.opacity(0.15))
+                    .tabDropTarget(
+                        axis: .horizontal, position: $endDropPosition, edge: nil,
+                        canDrop: { model.canDropAtEnd }, drop: { _ in model.dropAtEnd() })
+            }
         }
-        .padding(.leading, model.titlebarLeadingInset)
         .frame(height: Self.height)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .ignoresSafeArea(.container, edges: .top)
+        .background(Color.primary.opacity(0.045))
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityIdentifier("Horizontal Tab Bar")
     }

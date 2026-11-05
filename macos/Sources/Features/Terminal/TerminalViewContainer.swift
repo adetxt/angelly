@@ -48,6 +48,7 @@ class TerminalViewContainer: NSView {
         }
         if size.height != NSView.noIntrinsicMetric {
             size.height += tabBarHeight?.constant ?? 0
+            size.height += tabContentTopInset?.constant ?? 0
         }
         return size
     }
@@ -86,6 +87,7 @@ class TerminalViewContainer: NSView {
     private var tabSidebarWidth: NSLayoutConstraint?
     private var tabBar: NSView?
     private var tabBarHeight: NSLayoutConstraint?
+    private var tabContentTopInset: NSLayoutConstraint?
     private var tabSidebarCancellable: AnyCancellable?
 
     /// Shows one custom tab layout at a time, reserving space outside the terminal grid.
@@ -104,6 +106,7 @@ class TerminalViewContainer: NSView {
 
         let width = sidebar.widthAnchor.constraint(equalToConstant: 0)
         let height = bar.heightAnchor.constraint(equalToConstant: 0)
+        let topInset = bar.topAnchor.constraint(equalTo: topAnchor)
         terminalLeadingConstraint.isActive = false
         terminalTopConstraint.isActive = false
         terminalLeadingConstraint = terminalView.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
@@ -116,7 +119,7 @@ class TerminalViewContainer: NSView {
             terminalLeadingConstraint,
             bar.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             bar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            bar.topAnchor.constraint(equalTo: topAnchor),
+            topInset,
             height,
             terminalTopConstraint,
         ])
@@ -125,14 +128,18 @@ class TerminalViewContainer: NSView {
         tabSidebarWidth = width
         tabBar = bar
         tabBarHeight = height
+        tabContentTopInset = topInset
         let state = TabSidebarState.shared
-        tabSidebarCancellable = state.$isVisible.combineLatest(state.$width).sink { [weak self] visible, sidebarWidth in
-            self?.tabSidebar?.isHidden = !visible
-            self?.tabSidebarWidth?.constant = visible ? sidebarWidth : 0
-            self?.tabBar?.isHidden = visible
-            self?.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
-            self?.invalidateIntrinsicContentSize()
-        }
+        tabSidebarCancellable = Publishers.CombineLatest4(state.$isVisible, state.widthPublisher, model.$titlebarHeight, state.resizingPublisher)
+            .sink { [weak self] visible, sidebarWidth, titlebarHeight, resizing in
+                self?.tabSidebar?.isHidden = !visible
+                self?.tabSidebarWidth?.constant = visible ? sidebarWidth : 0
+                self?.tabBar?.isHidden = visible
+                self?.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
+                self?.tabContentTopInset?.constant = titlebarHeight
+                if !resizing { self?.invalidateIntrinsicContentSize() }
+                if resizing { self?.layoutSubtreeIfNeeded() }
+            }
     }
 
     override func viewDidMoveToWindow() {

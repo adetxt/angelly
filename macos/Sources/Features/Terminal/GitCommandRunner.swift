@@ -12,7 +12,8 @@ enum GitCommandRunner {
         executable: URL,
         arguments: [String],
         directory: URL? = nil,
-        timeout: TimeInterval? = nil
+        timeout: TimeInterval? = nil,
+        maxOutputBytes: Int? = nil
     ) throws -> Result {
         let process = Process()
         process.executableURL = executable
@@ -46,7 +47,20 @@ enum GitCommandRunner {
         defer { expiry?.cancel() }
 
         process.waitUntilExit()
-        let data = try Data(contentsOf: outputURL)
+        let data: Data
+        if let maxOutputBytes {
+            guard maxOutputBytes >= 0, maxOutputBytes < Int.max else {
+                throw GitWorktreeService.Failure(message: "Invalid command output limit.")
+            }
+            let reader = try FileHandle(forReadingFrom: outputURL)
+            defer { try? reader.close() }
+            data = try reader.read(upToCount: maxOutputBytes + 1) ?? Data()
+            guard data.count <= maxOutputBytes else {
+                throw GitWorktreeService.Failure(message: "The command returned too much output.")
+            }
+        } else {
+            data = try Data(contentsOf: outputURL)
+        }
         guard let output = String(data: data, encoding: .utf8) else {
             throw GitWorktreeService.Failure(message: "The command returned text that isn't valid UTF-8.")
         }

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import Testing
 import UniformTypeIdentifiers
@@ -7,6 +8,30 @@ import UniformTypeIdentifiers
 @Suite(.serialized)
 @MainActor
 struct TerminalTabModelTests {
+    @Test func interactiveSidebarResizeDoesNotRebuildViewsOrWritePreferences() throws {
+        let state = TabSidebarState.shared
+        let oldWidth = state.width
+        defer { state.setWidth(oldWidth) }
+        state.setWidth(220)
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        var stateChanges = 0
+        var modelChanges = 0
+        let stateObservation = state.objectWillChange.sink { stateChanges += 1 }
+        let modelObservation = fixture.model.objectWillChange.sink { modelChanges += 1 }
+        state.beginResize()
+        state.resize(to: 240)
+        state.resize(to: 260)
+        fixture.model.refresh()
+        #expect(state.width == 260)
+        #expect(UserDefaults.ghostty.double(forKey: "TabSidebarWidth") == 220)
+        #expect(stateChanges == 0)
+        #expect(modelChanges == 0)
+        state.endResize()
+        #expect(UserDefaults.ghostty.double(forKey: "TabSidebarWidth") == 260)
+        withExtendedLifetime((stateObservation, modelObservation)) {}
+    }
+
     @Test(arguments: [Axis.horizontal, .vertical], [VerticalEdge.top, .bottom])
     func insertionMarkerKeepsDropTargetSize(axis: Axis, edge: VerticalEdge) {
         let view = NSHostingView(rootView: Color.clear
@@ -35,7 +60,8 @@ struct TerminalTabModelTests {
         #expect(fixture.windows[0].tabBarIsHidden)
     }
 
-    @Test func sidebarHeaderControlsDoNotInitiateWindowDragging() async throws {
+    @Test(arguments: [CGFloat(8), 16, 28, 80])
+    func sidebarControlsAndDividerDoNotMoveWindow(dividerTopOffset: CGFloat) async throws {
         let state = TabSidebarState.shared
         let originalWidth = state.width
         let wasVisible = state.isVisible
@@ -67,10 +93,38 @@ struct TerminalTabModelTests {
             themeFrame.layoutSubtreeIfNeeded()
             container.layoutSubtreeIfNeeded()
             sidebar.layoutSubtreeIfNeeded()
-            let plusCenter = NSPoint(x: width - 22, y: container.bounds.maxY - 16)
+            let windowTop = themeFrame.convert(NSPoint(x: 0, y: themeFrame.bounds.maxY), to: container).y
+            let controls = try #require(window.titlebarAccessoryViewControllers.map(\.view).first {
+                $0 is NSHostingView<TabSidebarTitlebarControls>
+            })
+            let plusCenter = controls.convert(NSPoint(x: controls.bounds.maxX - 22, y: controls.bounds.midY), to: container)
             let target = try #require(themeFrame.hitTest(container.convert(plusCenter, to: themeFrame)))
             #expect(!target.mouseDownCanMoveWindow, "Header click at width \(width) reached \(type(of: target))")
             #expect(!target.isDescendant(of: sidebar), "Titlebar controls must receive clicks above the sidebar content")
+            let dividerPoint = NSPoint(x: width - 3, y: windowTop - dividerTopOffset)
+            let dividerTarget = try #require(themeFrame.hitTest(container.convert(dividerPoint, to: themeFrame)))
+            try #require(!dividerTarget.mouseDownCanMoveWindow,
+                         "Divider drag at width \(width) reached \(type(of: dividerTarget))")
+            let originalFrame = window.frame
+            let delta: CGFloat = width == 480 ? -40 : 40
+            let events: [(NSEvent.EventType, CGFloat)] = [
+                (.leftMouseDown, 0), (.leftMouseDragged, delta / 2),
+                (.leftMouseDragged, delta), (.leftMouseUp, delta),
+            ]
+            for (type, offset) in events {
+                let event = try #require(NSEvent.mouseEvent(
+                    with: type,
+                    location: container.convert(NSPoint(x: dividerPoint.x + offset, y: dividerPoint.y), to: nil),
+                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+                switch type {
+                case .leftMouseDown: dividerTarget.mouseDown(with: event)
+                case .leftMouseDragged: dividerTarget.mouseDragged(with: event)
+                default: dividerTarget.mouseUp(with: event)
+                }
+            }
+            #expect(state.width == width + delta)
+            #expect(window.frame == originalFrame)
         }
         state.toggle()
         model.refresh()
@@ -87,7 +141,9 @@ struct TerminalTabModelTests {
         model.refresh()
         #expect(model.items.count == 4)
         #expect(model.rows.count == 4)
-        #expect(model.items.first?.isSelected == true)
+        // The list is only shown once its own window is selected, so it must highlight that
+        // window already; otherwise the first selection animates the highlight into place.
+        #expect(model.items.map(\.isSelected) == [false, true, false, false])
     }
 
     @Test func fullSizeTitlebarKeepsTrafficLightsAndHidesTitle() throws {
@@ -111,6 +167,152 @@ struct TerminalTabModelTests {
         #expect(model.titlebarLeadingInset > 80)
     }
 
+    @Test(arguments: [true, false], [
+        (true, HorizontalNewTabButtonPlacement.tabbar), (false, .tabbar),
+        (true, .titlebar), (false, .titlebar)
+    ])
+    func sharedTitlebarKeepsTabsAndControlsBelowWindowChrome(
+        sidebarVisible: Bool, configuration: (Bool, HorizontalNewTabButtonPlacement)
+    ) async throws {
+        let (fullSizeContent, placement) = configuration
+        let defaults = UserDefaults.ghostty
+        let oldPlacement = defaults.object(forKey: HorizontalNewTabButtonPlacement.defaultsKey)
+        defaults.set(placement.rawValue, forKey: HorizontalNewTabButtonPlacement.defaultsKey)
+        defer { defaults.set(oldPlacement, forKey: HorizontalNewTabButtonPlacement.defaultsKey) }
+        let state = TabSidebarState.shared
+        let wasVisible = state.isVisible
+        if wasVisible != sidebarVisible { state.toggle() }
+        defer { if state.isVisible != wasVisible { state.toggle() } }
+        let rect = NSRect(x: 0, y: 0, width: 800, height: 480)
+        let style: NSWindow.StyleMask = [.titled, .closable, .resizable]
+        let window: TerminalWindow
+        if fullSizeContent {
+            let transparent = TransparentTitlebarTerminalWindow(
+                contentRect: rect, styleMask: style, backing: .buffered, defer: false)
+            transparent.enableFullSizeTabContent()
+            window = transparent
+        } else {
+            window = TerminalWindow(contentRect: rect, styleMask: style, backing: .buffered, defer: false)
+        }
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        let container = TerminalViewContainer { EmptyView() }
+        container.installTabViews(model)
+        window.contentView = container
+        model.refresh()
+        await Task.yield()
+        await Task.yield()
+        let themeFrame = try #require(container.superview)
+        themeFrame.layoutSubtreeIfNeeded()
+        let headerContainer = try #require(window.titlebarAccessoryViewControllers.map(\.view)
+            .compactMap { $0 as? TerminalTitlebarContainer }.first)
+        let header = headerContainer.contextView
+        let frame = header.convert(header.bounds, to: container)
+        #expect(frame.minX >= (sidebarVisible ? state.width : model.titlebarLeadingInset) - 1)
+        #expect(frame.maxX <= container.bounds.maxX)
+        let controls = try #require(window.titlebarAccessoryViewControllers.map(\.view).first {
+            $0 is NSHostingView<TabSidebarTitlebarControls>
+        })
+        if !sidebarVisible {
+            let controlsFrame = controls.convert(controls.bounds, to: container)
+            let expectedWidth: CGFloat = placement == .tabbar ? 34 : 68
+            #expect(abs(controlsFrame.width - expectedWidth) <= 1)
+            #expect(abs(frame.minX - controlsFrame.maxX - 12) <= 1)
+        }
+        let point = NSPoint(x: frame.minX + 16, y: frame.midY)
+        let target = try #require(themeFrame.hitTest(container.convert(point, to: themeFrame)))
+        #expect(target === headerContainer)
+        #expect(target.mouseDownCanMoveWindow)
+        let bar = try #require(container.subviews.first { $0 is NSHostingView<TerminalTabBar> })
+        #expect(bar.frame.maxY <= container.bounds.maxY - model.titlebarHeight + 1)
+        #expect(bar.isHidden == sidebarVisible)
+        if sidebarVisible {
+            let originalWidth = state.width
+            defer { state.setWidth(originalWidth) }
+            let originalHeaderWidth = model.titlebarContentWidth
+            let originalApplicationFrame = headerContainer.applicationView.convert(headerContainer.applicationView.bounds, to: themeFrame)
+            let controls = try #require(window.titlebarAccessoryViewControllers.map(\.view).first {
+                $0 is NSHostingView<TabSidebarTitlebarControls>
+            })
+            let originalControlsFrame = controls.convert(controls.bounds, to: themeFrame)
+            let delta: CGFloat = originalWidth < 440 ? 20 : -20
+            state.setWidth(originalWidth + delta)
+            for _ in 0..<50 where model.titlebarContentWidth == originalHeaderWidth {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(model.titlebarContentWidth == originalHeaderWidth - delta)
+            #expect(headerContainer.applicationView.convert(headerContainer.applicationView.bounds, to: themeFrame) == originalApplicationFrame)
+            #expect(controls.convert(controls.bounds, to: themeFrame) == originalControlsFrame)
+        }
+    }
+
+    @Test func narrowTitlebarKeepsCreationControls() async throws {
+        let state = TabSidebarState.shared
+        let oldWidth = state.width
+        let wasVisible = state.isVisible
+        if !wasVisible { state.toggle() }
+        state.setWidth(480)
+        defer {
+            state.setWidth(oldWidth)
+            if !wasVisible { state.toggle() }
+        }
+        let window = TransparentTitlebarTerminalWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 480),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.enableFullSizeTabContent()
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        model.refresh()
+        await Task.yield()
+        #expect(model.showsTitlebarHeader)
+    }
+
+    @Test func sharedTitlebarReplacesTahoeToolbarTitle() throws {
+        guard #available(macOS 26, *) else { return }
+        let window = TitlebarTabsTahoeTerminalWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 480),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.awakeFromNib()
+        #expect(window.toolbar != nil)
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        model.refresh()
+        #expect(window.toolbar == nil)
+    }
+
+    @Test func borderlessFullscreenUsesFallbackCreationControls() throws {
+        let window = TitlebarTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 480),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.enableFullSizeTabContent()
+        window.isReleasedWhenClosed = false
+        defer { window.simulatesBorderlessFullscreen = false; window.close() }
+        let ghostty = try #require((NSApp.delegate as? AppDelegate)?.ghostty)
+        let model = TerminalTabModel(window: window, ghostty: ghostty)
+        model.refresh()
+        #expect(model.showsTitlebarHeader)
+        window.simulatesBorderlessFullscreen = true
+        model.refresh()
+        #expect(!model.showsTitlebarHeader)
+        #expect(model.titlebarHeight == 0)
+    }
+
+    private final class TitlebarTestWindow: TransparentTitlebarTerminalWindow {
+        // Changing the real style of an offscreen AppKit test window enters native event tracking.
+        var simulatesBorderlessFullscreen = false
+
+        override var styleMask: NSWindow.StyleMask {
+            get { simulatesBorderlessFullscreen ? super.styleMask.subtracting(.titled) : super.styleMask }
+            set { super.styleMask = newValue }
+        }
+    }
+
     @Test func gitMetadataFollowsFocusedDirectory() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let checkout = directory.appendingPathComponent("repo")
@@ -130,11 +332,14 @@ struct TerminalTabModelTests {
         try await fixture.waitForProcessExit()
         fixture.setWorkingDirectory(checkout.path)
         try await fixture.waitForGitStatus { $0?.branch == "main" && $0?.isLinkedWorktree == false }
+        #expect(fixture.model.directoryContext?.directory == checkout.resolvingSymlinksInPath())
+        #expect(fixture.model.directoryContext?.branch == "main")
         #expect(fixture.windows[0].title.hasSuffix(" [main]"))
         #expect(fixture.model.items.first?.title.hasSuffix(" [main]") == false)
         fixture.windows[0].windowController.flatMap { $0 as? BaseTerminalController }?.titleOverride = "My task"
         fixture.setWorkingDirectory(linked.path)
         try await fixture.waitForGitStatus { $0?.branch == "feature" && $0?.isLinkedWorktree == true }
+        #expect(fixture.model.directoryContext?.directory == linked)
         #expect(fixture.windows[0].title == "My task [feature]")
         #expect(fixture.model.items.first?.title == "My task")
 
@@ -148,9 +353,47 @@ struct TerminalTabModelTests {
         #expect(firstSelection.items[1].gitStatus?.indicator == fixture.model.items[0].gitStatus?.indicator)
         fixture.windows[0].tabGroup?.selectedWindow = fixture.windows[0]
 
-        fixture.setWorkingDirectory(directory.path)
+        let controller = try #require(fixture.windows[0].windowController as? BaseTerminalController)
+        let surface = try #require(controller.focusedSurface)
+        surface.pwd = directory.path
         try await fixture.waitForGitStatus { $0 == nil }
         #expect(fixture.windows[0].title == "My task")
+    }
+
+    @Test func titlebarFollowsFocusedSplitAndShellDirectoryChanges() async throws {
+        let fixture = try Fixture(withSurfaces: true)
+        defer { fixture.close() }
+        try await fixture.waitForProcessExit()
+        let controller = try #require(fixture.windows[0].windowController as? TerminalController)
+        let first = try #require(controller.focusedSurface)
+        let app = try #require((NSApp.delegate as? AppDelegate)?.ghostty.app)
+        var config = Ghostty.SurfaceConfiguration()
+        config.command = "/usr/bin/true"
+        config.waitAfterCommand = true
+        let second = Ghostty.SurfaceView(app, baseConfig: config)
+        controller.surfaceTree = try controller.surfaceTree.inserting(view: second, at: first, direction: .right)
+        first.pwd = "/tmp/titlebar first"
+        second.pwd = "/tmp/titlebar second"
+        controller.focusedSurfaceDidChange(to: first)
+        fixture.model.refresh()
+        #expect(fixture.model.directoryContext?.directory.path == "/tmp/titlebar first")
+        controller.focusedSurfaceDidChange(to: second)
+        await Task.yield()
+        await Task.yield()
+        #expect(fixture.model.directoryContext?.directory.path == "/tmp/titlebar second")
+        second.pwd = "/tmp/titlebar changed"
+        for _ in 0..<50 where fixture.model.directoryContext?.directory.path != "/tmp/titlebar changed" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(fixture.model.directoryContext?.directory.path == "/tmp/titlebar changed")
+        first.pwd = "/tmp/inactive pane"
+        await Task.yield()
+        #expect(fixture.model.directoryContext?.directory.path == "/tmp/titlebar changed")
+        second.pwd = nil
+        for _ in 0..<50 where fixture.model.directoryContext != nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(fixture.model.directoryContext == nil)
     }
 
     @Test func collapsedGroupKeepsSelectedTabInHeader() throws {

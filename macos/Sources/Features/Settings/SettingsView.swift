@@ -29,6 +29,8 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @State private var category: SettingsCategory? = .font
+    @AppStorage(HorizontalNewTabButtonPlacement.defaultsKey, store: UserDefaults.ghostty)
+    private var horizontalNewTabButtonPlacement = HorizontalNewTabButtonPlacement.defaultValue
 
     var body: some View {
         HStack(spacing: 0) {
@@ -80,6 +82,11 @@ struct SettingsView: View {
             ConfigPicker("Titlebar style", key: "macos-titlebar-style",
                          options: ["native", "transparent", "tabs", "hidden"],
                          label: enumLabel, model: model)
+            Picker("New button in horizontal tabs", selection: $horizontalNewTabButtonPlacement) {
+                ForEach(HorizontalNewTabButtonPlacement.allCases) { placement in
+                    Text(placement.label).tag(placement)
+                }
+            }
             ConfigPicker("Restore windows", key: "window-save-state",
                          options: ["always", "never", "default"],
                          label: { $0 == "default" ? "Follow macOS" : enumLabel($0) },

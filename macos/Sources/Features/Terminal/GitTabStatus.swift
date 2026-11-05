@@ -1,6 +1,6 @@
 import Foundation
 
-struct GitTabStatus: Sendable {
+struct GitTabStatus: Equatable, Sendable {
     let directory: URL
     let branch: String?
     let head: String
@@ -9,7 +9,9 @@ struct GitTabStatus: Sendable {
     let hasConflicts: Bool
     let ahead: Int
     let behind: Int
+    var lineChanges: GitLineChanges? = GitLineChanges(additions: 0, deletions: 0)
     var pullRequest: GitPullRequestStatus
+    var ownerAvatarURL: URL?
 
     var titlebarBranch: String { branch ?? "Detached \(head.prefix(7))" }
 
@@ -49,11 +51,18 @@ struct GitTabStatus: Sendable {
                      branch.map { "Branch: \($0)" } ?? "Detached HEAD: \(head)",
                      hasChanges ? "Uncommitted changes" : "Working tree clean"]
         if hasConflicts { lines.append("Unresolved merge conflicts in working tree") }
+        if let lineChanges {
+            if lineChanges.additions > 0 || lineChanges.deletions > 0 {
+                lines.append("\(lineChanges.additions) lines added, \(lineChanges.deletions) lines deleted")
+            }
+        } else {
+            lines.append("Line changes unavailable")
+        }
         if ahead > 0 { lines.append("\(ahead) commits ahead of upstream") }
         if behind > 0 { lines.append("\(behind) commits behind upstream") }
         if let label = pullRequest.label { lines.append(label) }
         if pullRequest == .unavailable {
-            lines.append("GitHub PR lookup requires gh and gh auth login. Check authentication and connectivity.")
+            lines.append("Check connectivity and GitHub access. For private repositories, use gh auth login or set GH_TOKEN / GITHUB_TOKEN.")
         }
         return lines.joined(separator: "\n")
     }
@@ -93,6 +102,11 @@ struct GitTabStatus: Sendable {
     }
 }
 
+struct GitLineChanges: Equatable, Sendable {
+    let additions: Int
+    let deletions: Int
+}
+
 enum GitPullRequestStatus: Equatable, Sendable {
     enum State: String, Sendable {
         case open = "Open"
@@ -129,29 +143,197 @@ actor GitHubPullRequestService {
 
     private struct Entry {
         let status: GitPullRequestStatus
-        let date: Date
+        let expiry: Date
     }
 
     private let executable: URL?
+    private let environment: [String: String]
+    private let load: @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private var cache: [Key: Entry] = [:]
+    private var pending: [Key: Task<Entry, Never>] = [:]
+    private var apiUnavailableUntil: Date?
 
-    init(executable: URL? = nil) { self.executable = executable }
+    private var apiToken: String? {
+        [environment["GH_TOKEN"], environment["GITHUB_TOKEN"]].compactMap { $0 }.first { !$0.isEmpty }
+    }
 
-    func status(in directory: URL, branch: String) -> GitPullRequestStatus {
+    init(executable: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment,
+         load: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
+             try await apiSession.data(for: $0)
+         }) {
+        self.executable = executable
+        self.environment = environment
+        self.load = load
+    }
+
+    func status(in directory: URL, branch: String) async -> GitPullRequestStatus {
         let key = Key(directory: directory, branch: branch)
-        cache = cache.filter { Date().timeIntervalSince($0.value.date) < 60 }
+        cache = cache.filter { $0.value.expiry > Date() }
         if let entry = cache[key] { return entry.status }
-        let status: GitPullRequestStatus
+        if let task = pending[key] { return await task.value.status }
+        let task = Task { await lookup(in: directory, branch: branch) }
+        pending[key] = task
+        let entry = await task.value
+        pending[key] = nil
+        cache[key] = entry
+        return entry.status
+    }
+
+    private func lookup(in directory: URL, branch: String) async -> Entry {
         if let executable = executable ?? Self.findExecutable(),
            let result = try? GitCommandRunner.run(
             executable: executable, arguments: ["pr", "view", "--json", "number,state,isDraft,url,headRefName,mergeable"],
             directory: directory, timeout: 10) {
-            status = Self.parse(output: result.output, exitCode: result.exitCode, branch: branch)
-        } else {
-            status = .unavailable
+            let status = Self.parse(output: result.output, exitCode: result.exitCode, branch: branch)
+            if status != .unavailable { return Entry(status: status, expiry: Date().addingTimeInterval(60)) }
         }
-        cache[key] = Entry(status: status, date: Date())
-        return status
+        let status = await apiStatus(in: directory, branch: branch)
+        // Anonymous GitHub access allows only 60 requests/hour, shared across all tabs.
+        let lifetime: TimeInterval = apiToken == nil && status != .unavailable ? 300 : 60
+        return Entry(status: status, expiry: Date().addingTimeInterval(lifetime))
+    }
+
+    private final class APIDelegate: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            // Keep tokens on the fixed GitHub API endpoint, including when a repository moves.
+            completionHandler(nil)
+        }
+    }
+
+    private static let apiSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 15
+        return URLSession(configuration: configuration, delegate: APIDelegate(), delegateQueue: nil)
+    }()
+
+    private struct APIPullRequest: Decodable {
+        struct Head: Decodable {
+            struct Repository: Decodable { let fullName: String }
+            let ref: String
+            let repo: Repository?
+        }
+        let number: Int
+        let state: String
+        let draft: Bool
+        let mergedAt: String?
+        let htmlUrl: URL
+        let mergeable: Bool?
+        let head: Head
+
+        func status(branch: String, repository: String, base: String) -> GitPullRequestStatus {
+            guard number > 0, head.ref == branch,
+                  head.repo?.fullName.lowercased() == repository.lowercased(),
+                  htmlUrl.scheme == "https", htmlUrl.host == "github.com",
+                  htmlUrl.path.lowercased() == "/\(base)/pull/\(number)".lowercased() else { return .unavailable }
+            let status: GitPullRequestStatus.State
+            switch state {
+            case "open": status = mergeable == false ? .conflict : (draft ? .draft : .open)
+            case "closed": status = mergedAt == nil ? .closed : .merged
+            default: return .unavailable
+            }
+            return .pullRequest(number: number, state: status, url: htmlUrl)
+        }
+    }
+
+    private func apiStatus(in directory: URL, branch: String) async -> GitPullRequestStatus {
+        if let until = apiUnavailableUntil, until > Date() { return .unavailable }
+        func git(_ arguments: [String]) -> String? {
+            guard let result = try? GitCommandRunner.run(executable: URL(fileURLWithPath: "/usr/bin/git"),
+                                                        arguments: arguments, directory: directory,
+                                                        timeout: 5, maxOutputBytes: 65_536),
+                  result.exitCode == 0 else { return nil }
+            return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let remoteOutput = git(["remote"]) else { return .unavailable }
+        let remotes = remoteOutput.split(separator: "\n").map(String.init)
+        let configuredHead = git(["config", "--get", "branch.\(branch).pushRemote"])
+            ?? git(["config", "--get", "remote.pushDefault"])
+            ?? (remotes.contains("origin") ? "origin" : nil)
+            ?? git(["config", "--get", "branch.\(branch).remote"])
+        guard let baseRemote = ["upstream", "origin"].first(where: remotes.contains) ?? remotes.first else {
+            return .unavailable
+        }
+        let headRemote = configuredHead.flatMap { remotes.contains($0) ? $0 : nil }
+            ?? (remotes.contains("origin") ? "origin" : baseRemote)
+        guard let baseURL = git(["remote", "get-url", "--", baseRemote]),
+              let headURL = git(["remote", "get-url", "--", headRemote]),
+              let base = Self.repositoryName(from: baseURL),
+              let head = Self.repositoryName(from: headURL),
+              let owner = head.split(separator: "/").first else { return .unavailable }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        do {
+            // Search open PRs first so a newer closed PR cannot hide an older open one.
+            for state in ["open", "closed"] {
+                var components = URLComponents(string: "https://api.github.com/repos/\(base)/pulls")!
+                components.queryItems = [URLQueryItem(name: "head", value: "\(owner):\(branch)"),
+                                         URLQueryItem(name: "state", value: state),
+                                         URLQueryItem(name: "sort", value: "created"),
+                                         URLQueryItem(name: "direction", value: "desc"),
+                                         URLQueryItem(name: "per_page", value: "1")]
+                let data = try await apiData(at: components.url!)
+                let requests = try decoder.decode([APIPullRequest].self, from: data)
+                guard var request = requests.first else { continue }
+                guard request.state == state,
+                      request.status(branch: branch, repository: head, base: base) != .unavailable else {
+                    return .unavailable
+                }
+                if state == "open" {
+                    // The list endpoint omits mergeability; the detail endpoint computes it.
+                    let data = try await apiData(at: URL(string: "https://api.github.com/repos/\(base)/pulls/\(request.number)")!)
+                    let detail = try decoder.decode(APIPullRequest.self, from: data)
+                    guard detail.number == request.number else { return .unavailable }
+                    request = detail
+                }
+                return request.status(branch: branch, repository: head, base: base)
+            }
+            return .noPullRequest
+        } catch {
+            return .unavailable
+        }
+    }
+
+    private func apiData(at url: URL) async throws -> Data {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue("Ghostty", forHTTPHeaderField: "User-Agent")
+        if let token = apiToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await load(request)
+        guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        if [403, 429].contains(response.statusCode),
+           response.statusCode == 429 || response.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0" ||
+            response.value(forHTTPHeaderField: "Retry-After") != nil {
+            let now = Date()
+            let reset = response.value(forHTTPHeaderField: "X-RateLimit-Reset").flatMap(TimeInterval.init)
+            let retry = response.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            let wait = max(reset.map { $0 - now.timeIntervalSince1970 } ?? 0, retry ?? 0)
+            apiUnavailableUntil = now.addingTimeInterval(wait.isFinite ? max(60, wait) : 60)
+        }
+        guard response.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+
+    static func repositoryName(from remote: String) -> String? {
+        let value = remote.hasPrefix("git@github.com:")
+            ? "ssh://git@github.com/" + remote.dropFirst("git@github.com:".count) : remote
+        guard let url = URLComponents(string: value), url.host?.lowercased() == "github.com",
+              ["https", "ssh", "git"].contains(url.scheme), url.port == nil,
+              url.query == nil, url.fragment == nil else { return nil }
+        var path = url.path
+        if path.hasSuffix(".git") { path.removeLast(4) }
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        guard parts.count == 3, parts[0].isEmpty,
+              parts.dropFirst().allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." &&
+                  $0.unicodeScalars.allSatisfy(allowed.contains) }) else { return nil }
+        return parts.dropFirst().joined(separator: "/")
     }
 
     static func parse(output: String, exitCode: Int32, branch: String) -> GitPullRequestStatus {

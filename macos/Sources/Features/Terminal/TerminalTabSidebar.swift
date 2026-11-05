@@ -14,17 +14,39 @@ final class TabSidebarState: ObservableObject {
     private static let widthKey = "TabSidebarWidth"
 
     @Published private(set) var isVisible: Bool
-    @Published private(set) var width: CGFloat
+    private(set) var width: CGFloat
+    private let widthSubject: CurrentValueSubject<CGFloat, Never>
+    private let resizingSubject = CurrentValueSubject<Bool, Never>(false)
+
+    var widthPublisher: AnyPublisher<CGFloat, Never> { widthSubject.eraseToAnyPublisher() }
+    var resizingPublisher: AnyPublisher<Bool, Never> { resizingSubject.eraseToAnyPublisher() }
+    var isResizing: Bool { resizingSubject.value }
 
     private init() {
         isVisible = UserDefaults.ghostty.object(forKey: Self.defaultsKey) as? Bool ?? true
         let stored = UserDefaults.ghostty.object(forKey: Self.widthKey) as? Double
         width = stored.map { Self.clamp(CGFloat($0)) } ?? Self.defaultWidth
+        widthSubject = CurrentValueSubject(width)
     }
 
     func setWidth(_ newWidth: CGFloat) {
-        width = Self.clamp(newWidth)
+        resize(to: newWidth)
         UserDefaults.ghostty.set(Double(width), forKey: Self.widthKey)
+    }
+
+    func beginResize() { resizingSubject.send(true) }
+
+    func resize(to newWidth: CGFloat) {
+        let clamped = Self.clamp(newWidth)
+        guard width != clamped else { return }
+        width = clamped
+        widthSubject.send(clamped)
+    }
+
+    func endResize() {
+        guard isResizing else { return }
+        UserDefaults.ghostty.set(Double(width), forKey: Self.widthKey)
+        resizingSubject.send(false)
     }
 
     private static func clamp(_ width: CGFloat) -> CGFloat {
@@ -65,24 +87,22 @@ struct TabSidebarToggleButton: View {
 struct TabSidebarTitlebarControls: View {
     @ObservedObject var model: TerminalTabModel
     @ObservedObject private var state = TabSidebarState.shared
+    @AppStorage(HorizontalNewTabButtonPlacement.defaultsKey, store: UserDefaults.ghostty)
+    private var newButtonPlacement = HorizontalNewTabButtonPlacement.defaultValue
 
     var body: some View {
+        let showsNewButton = newButtonPlacement.showsInTitlebar(
+            sidebarVisible: state.isVisible, titlebarAvailable: model.showsTitlebarHeader)
         HStack(spacing: 0) {
             TabSidebarToggleButton(state: state)
-            if state.isVisible && model.titlebarHeight > 0 {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        WindowDragRegion()
-                            // Reclaim the inset's 8pt gutter, then reserve the menu and trailing padding.
-                            .frame(width: max(0, state.width - model.titlebarLeadingInset + 8 - 24 - 10), height: 24)
-                            .accessibilityHidden(true)
-                        TerminalNewTabMenu(tabs: model).frame(width: 24, height: 24)
-                    }
-                    .padding(.top, 3)
-                    .padding(.trailing, 10)
-                    Spacer(minLength: 0)
-                }
+            if showsNewButton {
+                TerminalNewTabMenu(tabs: model).frame(width: 24, height: 24)
             }
+        }
+        .padding(.trailing, showsNewButton ? 10 : 0)
+        .frame(width: showsNewButton ? 68 : 34, height: 32, alignment: .leading)
+        .onChange(of: showsNewButton) { _ in
+            DispatchQueue.main.async { model.refresh() }
         }
     }
 }
@@ -91,15 +111,13 @@ struct TabSidebarTitlebarControls: View {
 
 struct TabSidebarView: View {
     @ObservedObject var model: TerminalTabModel
-    @ObservedObject private var state = TabSidebarState.shared
-    @State private var dragStartWidth: CGFloat?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             if model.titlebarHeight > 0 {
                 Color.clear.frame(height: max(32, model.titlebarHeight))
-            } else {
+            } else if !model.showsTitlebarHeader {
                 header
             }
 
@@ -126,7 +144,7 @@ struct TabSidebarView: View {
                 }
             }
         }
-        .frame(width: state.width)
+        .frame(maxWidth: .infinity)
         .frame(maxHeight: .infinity)
         .background(Color.primary.opacity(0.045))
         .ignoresSafeArea(.container, edges: .top)
@@ -139,30 +157,12 @@ struct TabSidebarView: View {
                 .ignoresSafeArea(.container, edges: .top)
         }
         .overlay(alignment: .trailing) {
-            resizeHandle
+            TabSidebarResizeHandle()
+                .frame(width: 6)
                 .frame(maxHeight: .infinity)
                 .ignoresSafeArea(.container, edges: .top)
+                .accessibilityHidden(true)
         }
-    }
-
-    /// Dragged in window coordinates: the handle moves with the width it is changing, so
-    /// a local translation would feed back into itself.
-    private var resizeHandle: some View {
-        Color.clear
-            .frame(width: 6)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        let start = dragStartWidth ?? state.width
-                        dragStartWidth = start
-                        state.setWidth(start + value.translation.width)
-                    }
-                    .onEnded { _ in dragStartWidth = nil })
-            .accessibilityHidden(true)
     }
 
     private var header: some View {
@@ -175,6 +175,50 @@ struct TabSidebarView: View {
         .padding(.leading, 8)
         .padding(.trailing, 10)
         .frame(height: max(32, model.titlebarHeight))
+    }
+}
+
+/// The titlebar sits above the sidebar content, so both layers need a resize target.
+private struct TabSidebarResizeHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> TabSidebarResizeView { TabSidebarResizeView() }
+    func updateNSView(_ nsView: TabSidebarResizeView, context: Context) {}
+}
+
+final class TabSidebarResizeView: NSView {
+    private var dragStart: (x: CGFloat, width: CGFloat)?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStart = (event.locationInWindow.x, TabSidebarState.shared.width)
+        TabSidebarState.shared.beginResize()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let dragStart else { return }
+        // Local coordinates move with the divider and would feed back into the resize.
+        let scale = window?.backingScaleFactor ?? 1
+        let width = dragStart.width + event.locationInWindow.x - dragStart.x
+        TabSidebarState.shared.resize(to: (width * scale).rounded() / scale)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard dragStart != nil else { return }
+        dragStart = nil
+        TabSidebarState.shared.endResize()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, dragStart != nil {
+            dragStart = nil
+            TabSidebarState.shared.endResize()
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 }
 
@@ -270,10 +314,6 @@ private struct TabSidebarRow: View {
             Image(systemName: "bell.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(.orange)
-        } else if let shortcut = item.shortcut {
-            Text(shortcut)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
         }
     }
 
