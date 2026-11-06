@@ -55,7 +55,7 @@ class DockTilePlugin: NSObject, NSDockTilePlugIn {
             // Use Angelly's `Blueprint` icon to distinguish Debug from Release builds.
             appIcon = pluginBundle.image(forResource: "BlueprintImage")!
             #else
-            // Reset to Ghostty.icon
+            // Reset to the bundled Angelly icon.
             appIcon = nil
             #endif
         } else {

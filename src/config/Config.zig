@@ -3607,8 +3607,8 @@ keybind: Keybinds = .{},
 ///    `paper`, `egyptian`, `retro`, `xray` - Bundled Angelly icon variants.
 ///  * `custom` - Use a completely custom icon. The location must be specified
 ///    using the additional `macos-custom-icon` configuration
-///  * `custom-style` - Use the official Ghostty icon but with custom
-///    styles applied to various layers. The custom styles must be
+///  * `custom-style` - Use the Angelly angel mascot with custom
+///    styles applied to the mascot, screen, and frame. The custom styles must be
 ///    specified using the additional `macos-icon`-prefixed configurations.
 ///    The `macos-icon-ghost-color` and `macos-icon-screen-color`
 ///    configurations are required for this style.
@@ -3644,7 +3644,8 @@ keybind: Keybinds = .{},
 /// `custom-style`.
 @"macos-icon-frame": MacAppIconFrame = .aluminum,
 
-/// The color of the ghost in the macOS app icon.
+/// The color of the angel mascot in the macOS app icon. The `ghost-color`
+/// key name is retained for compatibility with existing configurations.
 ///
 /// Note: This configuration is required when `macos-icon` is set to
 /// `custom-style`.
