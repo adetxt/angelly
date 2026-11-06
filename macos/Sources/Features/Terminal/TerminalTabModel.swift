@@ -211,6 +211,10 @@ final class TerminalTabModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] visible, width in
                 guard let self, let window = self.window else { return }
+                if TabSidebarState.shared.isResizing {
+                    guard window.isVisible, !window.isMiniaturized,
+                          window.tabGroup?.selectedWindow == nil || window.tabGroup?.selectedWindow === window else { return }
+                }
                 self.refreshTitlebarInsets(window, sidebarVisible: visible, sidebarWidth: width)
             }
             .store(in: &cancellables)

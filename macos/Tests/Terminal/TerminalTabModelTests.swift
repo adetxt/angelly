@@ -59,6 +59,77 @@ struct TerminalTabModelTests {
         withExtendedLifetime((stateObservation, modelObservation)) {}
     }
 
+    @Test func sidebarDragCoalescesMouseEventsAndCommitsReleasePosition() async throws {
+        let state = TabSidebarState.shared
+        let originalWidth = state.width
+        defer { state.setWidth(originalWidth) }
+        state.setWidth(220)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let divider = TabSidebarResizeView()
+        window.contentView = divider
+        var widths: [CGFloat] = []
+        let observation = state.widthPublisher.dropFirst().sink { widths.append($0) }
+        func event(_ type: NSEvent.EventType, x: CGFloat) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: type, location: NSPoint(x: x, y: 20), modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+
+        divider.mouseDown(with: try event(.leftMouseDown, x: 220))
+        divider.mouseDragged(with: try event(.leftMouseDragged, x: 240))
+        divider.mouseDragged(with: try event(.leftMouseDragged, x: 260))
+        #expect(widths.isEmpty, "Mouse events should wait for the next display frame")
+        window.orderFront(nil)
+        for _ in 0..<100 {
+            if !widths.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(widths == [260], "The display callback should apply only the latest mouse position")
+        divider.mouseUp(with: try event(.leftMouseUp, x: 280))
+        #expect(widths == [260, 280])
+        #expect(state.width == 280)
+        #expect(!state.isResizing)
+        #expect(UserDefaults.ghostty.double(forKey: "TabSidebarWidth") == 280)
+
+        divider.mouseDown(with: try event(.leftMouseDown, x: 280))
+        divider.mouseDragged(with: try event(.leftMouseDragged, x: 300))
+        divider.removeFromSuperview()
+        #expect(state.width == 300, "Detaching the drag view must commit its pending width")
+        #expect(!state.isResizing)
+        withExtendedLifetime(observation) {}
+    }
+
+    @Test func hiddenSidebarDefersLayoutUntilResizeEnds() throws {
+        let state = TabSidebarState.shared
+        let originalWidth = state.width
+        defer {
+            state.endResize()
+            state.setWidth(originalWidth)
+        }
+        state.setWidth(220)
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        let window = fixture.windows[0]
+        window.orderOut(nil)
+        let container = TerminalViewContainer { EmptyView() }
+        window.contentView = container
+        container.installTabViews(fixture.model)
+        let sidebar = try #require(container.subviews.first { $0 is NSHostingView<TabSidebarView> })
+        container.layoutSubtreeIfNeeded()
+        #expect(sidebar.frame.width == 220)
+
+        state.beginResize()
+        state.resize(to: 260)
+        container.layoutSubtreeIfNeeded()
+        #expect(sidebar.frame.width == 220)
+        state.endResize()
+        container.layoutSubtreeIfNeeded()
+        #expect(sidebar.frame.width == 260)
+    }
+
     @Test(arguments: [Axis.horizontal, .vertical], [VerticalEdge.top, .bottom])
     func insertionMarkerKeepsDropTargetSize(axis: Axis, edge: VerticalEdge) {
         let view = NSHostingView(rootView: Color.clear
