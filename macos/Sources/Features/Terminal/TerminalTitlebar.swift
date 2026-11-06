@@ -51,7 +51,7 @@ final class TerminalTitlebarContainer: NSView {
         self.sidebarVisible = sidebarVisible
         sidebarOffset = sidebarVisible ? max(0, sidebarWidth - leading) : 0
         needsLayout = true
-        layoutSubtreeIfNeeded()
+        if !TabSidebarState.shared.isResizing { layoutSubtreeIfNeeded() }
     }
 
     override func layout() {

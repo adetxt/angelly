@@ -132,13 +132,18 @@ class TerminalViewContainer: NSView {
         let state = TabSidebarState.shared
         tabSidebarCancellable = Publishers.CombineLatest4(state.$isVisible, state.widthPublisher, model.$titlebarHeight, state.resizingPublisher)
             .sink { [weak self] visible, sidebarWidth, titlebarHeight, resizing in
-                self?.tabSidebar?.isHidden = !visible
-                self?.tabSidebarWidth?.constant = visible ? sidebarWidth : 0
-                self?.tabBar?.isHidden = visible
-                self?.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
-                self?.tabContentTopInset?.constant = titlebarHeight
-                if !resizing { self?.invalidateIntrinsicContentSize() }
-                if resizing { self?.layoutSubtreeIfNeeded() }
+                guard let self else { return }
+                // Hidden windows catch up when resizingPublisher emits the end of the drag.
+                if resizing {
+                    guard let window = self.window, window.isVisible, !window.isMiniaturized,
+                          window.tabGroup?.selectedWindow == nil || window.tabGroup?.selectedWindow === window else { return }
+                }
+                self.tabSidebar?.isHidden = !visible
+                self.tabSidebarWidth?.constant = visible ? sidebarWidth : 0
+                self.tabBar?.isHidden = visible
+                self.tabBarHeight?.constant = visible ? 0 : TerminalTabBar.height
+                self.tabContentTopInset?.constant = titlebarHeight
+                if !resizing { self.invalidateIntrinsicContentSize() }
             }
     }
 
