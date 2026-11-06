@@ -1,7 +1,7 @@
 import AppKit
 
 class DockTilePlugin: NSObject, NSDockTilePlugIn {
-    // WARNING: An instance of this class is alive as long as Ghostty's icon is
+    // WARNING: An instance of this class is alive as long as Angelly's icon is
     // in the doc (running or not!), so keep any state and processing to a
     // minimum to respect resource usage.
 
@@ -52,10 +52,10 @@ class DockTilePlugin: NSObject, NSDockTilePlugIn {
         let appIcon: NSImage?
         if #available(macOS 26.0, *) {
             #if DEBUG
-            // Use the `Blueprint` icon to distinguish Debug from Release builds.
+            // Use Angelly's `Blueprint` icon to distinguish Debug from Release builds.
             appIcon = pluginBundle.image(forResource: "BlueprintImage")!
             #else
-            // Reset to Ghostty.icon
+            // Reset to the bundled Angelly icon.
             appIcon = nil
             #endif
         } else {

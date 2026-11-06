@@ -4,13 +4,13 @@ struct ColorizedGhosttyIcon {
     /// The colors that make up the gradient of the screen.
     let screenColors: [NSColor]
 
-    /// The color of the ghost.
+    /// The color of the angel mascot.
     let ghostColor: NSColor
 
     /// The frame type to use
     let frame: Ghostty.MacOSIconFrame
 
-    /// Make a custom colorized ghostty icon.
+    /// Make a custom colorized Angelly icon.
     func makeImage(in bundle: Bundle) -> NSImage? {
         // All of our layers (not in order)
         guard let screen = bundle.image(forResource: "CustomIconScreen") else { return nil }

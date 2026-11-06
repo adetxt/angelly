@@ -598,7 +598,7 @@ language: ?[:0]const u8 = null,
 /// be fixed in a future update:
 ///
 ///   - macOS: titlebar tabs style is not updated when switching themes.
-theme: ?Theme = null,
+theme: ?Theme = .{ .light = "Angelly Dark", .dark = "Angelly Dark" },
 
 /// Background color for the window.
 /// Specified as either hex (`#RRGGBB` or `RRGGBB`) or a named X11 color.
@@ -3602,14 +3602,13 @@ keybind: Keybinds = .{},
 ///
 /// Valid values:
 ///
-///  * `official` - Use the official Ghostty icon.
+///  * `official` - Use the official Angelly icon.
 ///  * `blueprint`, `chalkboard`, `microchip`, `glass`, `holographic`,
-///    `paper`, `retro`, `xray` - Official variants of the Ghostty icon
-///    hand-created by artists (no AI).
+///    `paper`, `egyptian`, `retro`, `xray` - Bundled Angelly icon variants.
 ///  * `custom` - Use a completely custom icon. The location must be specified
 ///    using the additional `macos-custom-icon` configuration
-///  * `custom-style` - Use the official Ghostty icon but with custom
-///    styles applied to various layers. The custom styles must be
+///  * `custom-style` - Use the Angelly angel mascot with custom
+///    styles applied to the mascot, screen, and frame. The custom styles must be
 ///    specified using the additional `macos-icon`-prefixed configurations.
 ///    The `macos-icon-ghost-color` and `macos-icon-screen-color`
 ///    configurations are required for this style.
@@ -3645,7 +3644,8 @@ keybind: Keybinds = .{},
 /// `custom-style`.
 @"macos-icon-frame": MacAppIconFrame = .aluminum,
 
-/// The color of the ghost in the macOS app icon.
+/// The color of the angel mascot in the macOS app icon. The `ghost-color`
+/// key name is retained for compatibility with existing configurations.
 ///
 /// Note: This configuration is required when `macos-icon` is set to
 /// `custom-style`.
@@ -9323,6 +9323,7 @@ pub const MacAppIcon = enum {
     paper,
     retro,
     xray,
+    egyptian,
     custom,
     @"custom-style",
 };

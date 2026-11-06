@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly icon" width="128">
+  <img src="macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly pastel angel logo" width="128">
 </p>
 
 <h1 align="center">Angelly</h1>

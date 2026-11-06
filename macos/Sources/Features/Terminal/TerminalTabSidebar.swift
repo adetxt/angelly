@@ -188,6 +188,8 @@ private struct TabSidebarResizeHandle: NSViewRepresentable {
 
 final class TabSidebarResizeView: NSView {
     private var dragStart: (x: CGFloat, width: CGFloat)?
+    private var pendingWidth: CGFloat?
+    private var stopResizeUpdates: (() -> Void)?
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -199,6 +201,17 @@ final class TabSidebarResizeView: NSView {
     override func mouseDown(with event: NSEvent) {
         dragStart = (event.locationInWindow.x, TabSidebarState.shared.width)
         TabSidebarState.shared.beginResize()
+        if #available(macOS 14, *) {
+            let link = displayLink(target: self, selector: #selector(applyPendingWidth))
+            link.add(to: .main, forMode: .common)
+            stopResizeUpdates = { link.invalidate() }
+        } else {
+            let timer = Timer(timeInterval: 1.0 / Double(window?.screen?.maximumFramesPerSecond ?? 60), repeats: true) { [weak self] _ in
+                self?.applyPendingWidth()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            stopResizeUpdates = { timer.invalidate() }
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -206,21 +219,33 @@ final class TabSidebarResizeView: NSView {
         // Local coordinates move with the divider and would feed back into the resize.
         let scale = window?.backingScaleFactor ?? 1
         let width = dragStart.width + event.locationInWindow.x - dragStart.x
-        TabSidebarState.shared.resize(to: (width * scale).rounded() / scale)
+        pendingWidth = (width * scale).rounded() / scale
     }
 
     override func mouseUp(with event: NSEvent) {
         guard dragStart != nil else { return }
-        dragStart = nil
-        TabSidebarState.shared.endResize()
+        mouseDragged(with: event)
+        finishResize()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil, dragStart != nil {
-            dragStart = nil
-            TabSidebarState.shared.endResize()
-        }
+        if newWindow !== window { finishResize() }
         super.viewWillMove(toWindow: newWindow)
+    }
+
+    @objc private func applyPendingWidth() {
+        guard let width = pendingWidth else { return }
+        pendingWidth = nil
+        TabSidebarState.shared.resize(to: width)
+    }
+
+    private func finishResize() {
+        guard dragStart != nil else { return }
+        stopResizeUpdates?()
+        stopResizeUpdates = nil
+        applyPendingWidth()
+        dragStart = nil
+        TabSidebarState.shared.endResize()
     }
 }
 
