@@ -9,10 +9,11 @@ extension Ghostty {
     }
 
     /// macos-icon
-    enum MacOSIcon: String, Sendable {
+    enum MacOSIcon: String, Sendable, CaseIterable {
         case official
         case blueprint
         case chalkboard
+        case egyptian
         case glass
         case holographic
         case microchip
@@ -22,12 +23,15 @@ extension Ghostty {
         case custom
         case customStyle = "custom-style"
 
+        static var bundledIcons: [Self] { allCases.filter { $0.assetName != nil } }
+
         /// Bundled asset name for built-in icons
         var assetName: String? {
             switch self {
-            case .official: return nil
+            case .official: return "AppIconImage"
             case .blueprint: return "BlueprintImage"
             case .chalkboard: return "ChalkboardImage"
+            case .egyptian: return "EgyptianImage"
             case .microchip: return "MicrochipImage"
             case .glass: return "GlassImage"
             case .holographic: return "HolographicImage"

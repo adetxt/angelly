@@ -1,11 +1,12 @@
 import AppKit
 import System
 
-/// The icon style for the Ghostty App.
+/// The icon style for the Angelly app.
 enum AppIcon: Equatable, Codable, Sendable {
     case official
     case blueprint
     case chalkboard
+    case egyptian
     case glass
     case holographic
     case microchip
@@ -20,11 +21,13 @@ enum AppIcon: Equatable, Codable, Sendable {
     init?(config: Ghostty.Config) {
         switch config.macosIcon {
         case .official:
-            return nil
+            self = .official
         case .blueprint:
             self = .blueprint
         case .chalkboard:
             self = .chalkboard
+        case .egyptian:
+            self = .egyptian
         case .glass:
             self = .glass
         case .holographic:
@@ -60,11 +63,13 @@ enum AppIcon: Equatable, Codable, Sendable {
     func image(in bundle: Bundle) -> NSImage? {
         switch self {
         case .official:
-            return nil
+            return bundle.image(forResource: "AppIconImage")!
         case .blueprint:
             return bundle.image(forResource: "BlueprintImage")!
         case .chalkboard:
             return bundle.image(forResource: "ChalkboardImage")!
+        case .egyptian:
+            return bundle.image(forResource: "EgyptianImage")!
         case .glass:
             return bundle.image(forResource: "GlassImage")!
         case .holographic:

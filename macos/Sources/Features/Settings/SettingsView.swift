@@ -61,6 +61,20 @@ struct SettingsView: View {
             ConfigTextField("Size", key: "font-size", model: model)
 
         case .appearance:
+            HStack(spacing: 12) {
+                if let icon = Ghostty.MacOSIcon(rawValue: model.values["macos-icon"] ?? "official"),
+                   let assetName = icon.assetName {
+                    Image(assetName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 64, height: 64)
+                        .accessibilityHidden(true)
+                }
+                ConfigPicker("App icon", key: "macos-icon",
+                             options: Ghostty.MacOSIcon.bundledIcons.map(\.rawValue),
+                             label: { $0 == "xray" ? "X-Ray" : enumLabel($0) },
+                             model: model)
+            }
             ConfigPicker("Theme", key: "theme", options: model.themes, model: model)
             ConfigPicker("Window theme", key: "window-theme",
                          options: ["auto", "system", "light", "dark", "ghostty"],
