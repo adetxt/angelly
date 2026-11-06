@@ -3602,10 +3602,9 @@ keybind: Keybinds = .{},
 ///
 /// Valid values:
 ///
-///  * `official` - Use the official Ghostty icon.
+///  * `official` - Use the official Angelly icon.
 ///  * `blueprint`, `chalkboard`, `microchip`, `glass`, `holographic`,
-///    `paper`, `retro`, `xray` - Official variants of the Ghostty icon
-///    hand-created by artists (no AI).
+///    `paper`, `egyptian`, `retro`, `xray` - Bundled Angelly icon variants.
 ///  * `custom` - Use a completely custom icon. The location must be specified
 ///    using the additional `macos-custom-icon` configuration
 ///  * `custom-style` - Use the official Ghostty icon but with custom
@@ -9323,6 +9322,7 @@ pub const MacAppIcon = enum {
     paper,
     retro,
     xray,
+    egyptian,
     custom,
     @"custom-style",
 };

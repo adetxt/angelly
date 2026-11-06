@@ -2,7 +2,7 @@ import SwiftUI
 import GhosttyKit
 import Combine
 
-/// A view that cycles through Ghostty's official icon variants.
+/// A view that cycles through Angelly's icon variants.
 struct CyclingIconView: View {
     @EnvironmentObject var viewModel: AboutViewModel
 
@@ -26,7 +26,7 @@ struct CyclingIconView: View {
                 }
             }
         }
-        .accessibilityLabel("Ghostty Application Icon")
+        .accessibilityLabel("Angelly Application Icon")
         .accessibilityHint("Click to cycle through icon variants")
     }
 

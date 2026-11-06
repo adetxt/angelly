@@ -6,17 +6,7 @@ class AboutViewModel: ObservableObject {
 
     private var timerCancellable: AnyCancellable?
 
-    private let icons: [Ghostty.MacOSIcon] = [
-        .official,
-        .blueprint,
-        .chalkboard,
-        .microchip,
-        .glass,
-        .holographic,
-        .paper,
-        .retro,
-        .xray,
-    ]
+    private let icons = Ghostty.MacOSIcon.bundledIcons
 
     func startCyclingIcons() {
         timerCancellable = Timer.publish(every: 3, on: .main, in: .common)
