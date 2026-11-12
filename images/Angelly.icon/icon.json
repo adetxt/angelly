@@ -16,9 +16,9 @@
           "glass" : false,
           "hidden" : false,
           "image-name" : "Angelly.png",
-          "name" : "Angelly Mascot",
+          "name" : "Wing and Terminal Prompt",
           "position" : {
-            "scale" : 1.25,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0
@@ -27,38 +27,7 @@
         }
       ],
       "lighting" : "individual",
-      "name" : "Angelly Mascot",
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0
-      },
-      "specular" : false,
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0
-      }
-    },
-    {
-      "blend-mode" : "normal",
-      "layers" : [
-        {
-          "blend-mode" : "normal",
-          "fill" : "automatic",
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "Background.png",
-          "name" : "Frame and Screen",
-          "position" : {
-            "scale" : 1.25,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "lighting" : "individual",
-      "name" : "Frame and Screen",
+      "name" : "Wing and Terminal Prompt",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0

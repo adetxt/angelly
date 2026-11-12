@@ -74,7 +74,7 @@ struct SettingsView: View {
                 }
                 ConfigPicker("App icon", key: "macos-icon",
                              options: Ghostty.MacOSIcon.bundledIcons.map(\.rawValue),
-                             label: { $0 == "xray" ? "X-Ray" : enumLabel($0) },
+                             label: { ["xray": "X-Ray", "attack-on-titan": "Attack on Titan"][$0] ?? enumLabel($0) },
                              model: model)
             }
             ConfigPicker("Theme", key: "theme", options: model.themes, model: model)

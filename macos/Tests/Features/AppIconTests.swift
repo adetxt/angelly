@@ -11,7 +11,7 @@ struct AppIconTests {
     }
 
     @Test func bundledIconsLoadFromConfigAndAssets() throws {
-        #expect(Ghostty.MacOSIcon.bundledIcons.count == 10)
+        #expect(Ghostty.MacOSIcon.bundledIcons.count == 11)
         for style in Ghostty.MacOSIcon.bundledIcons {
             let config = try TemporaryConfig("macos-icon = \(style.rawValue)")
             #expect(config.macosIcon == style)

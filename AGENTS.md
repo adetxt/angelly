@@ -4,6 +4,17 @@ A file for [guiding coding agents](https://agents.md/).
 
 ## Commands
 
+The application lives in the Rust workspace under `rust/`. Cargo builds the
+Ghostty Zig terminal library automatically.
+
+- **Build app:** `cd rust && cargo build -p angelly`
+- **Run app:** `cd rust && cargo run -p angelly`
+- **Test Rust:** `cd rust && cargo test --workspace`
+- **Targeted terminal tests:** `cd rust && cargo test -p terminal --test term <filter>`
+- **macOS bundle:** `rust/scripts/bundle-macos.sh --debug` (from the repo root)
+
+The commands below apply to the inherited Ghostty code:
+
 - **Build:** `zig build`
   - If you're on macOS and don't need to build the macOS app, use
     `-Demit-macos-app=false` to skip building the app bundle and speed up

@@ -1,17 +1,22 @@
 <p align="center">
-  <img src="macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly pastel angel logo" width="128">
+  <img src="macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly wing and terminal prompt icon" width="128">
 </p>
 
 <h1 align="center">Angelly</h1>
 
 <p align="center">
-  Ghostty, with a little extra taste.
+  Your terminal, with wings.
   <br />
   A personal macOS fork of <a href="https://ghostty.org">Ghostty</a>.
 </p>
 
-Angelly is a fast, native terminal for macOS, built on Ghostty. It keeps the
-upstream terminal foundation and adds a few personal touches to the macOS app.
+Angelly is a native terminal with a Rust frontend built with GPUI and Ghostty's
+Zig terminal library. The Rust workspace lives in `rust/`.
+
+Angelly's wing and terminal prompt icon comes in ten styles: Official, Blueprint,
+Chalkboard, Microchip, Glass, Holographic, Paper, Egyptian, Retro, and X-ray.
+Official is the default. Choose another with `macos-icon` in your configuration
+(for example, `macos-icon = blueprint`). See the [icon assets](images/BRANDING.md).
 
 ## Screenshots
 
@@ -35,9 +40,8 @@ There’s no set roadmap. Angelly started as a way to add sidebar tabs and tab
 groups to Ghostty. Have an idea? You’re welcome to contribute or [open an
 issue](https://github.com/adetxt/angelly/issues).
 
-Angelly is currently macOS-only. Linux and GTK code remains in the repository,
-but this fork's Linux app is not currently maintained or tested. Release builds
-are signed with a Developer ID and notarized by Apple.
+The Rust app supports macOS and has Linux packaging. See
+[platform support](rust/packaging/README.md) for the current platform limitations.
 
 ## Install
 
@@ -46,21 +50,28 @@ and drag Angelly into Applications.
 
 ## Build
 
-You need macOS, Xcode, and [Zig](https://ziglang.org/download/) 0.17.0. Install
-the Metal toolchain with:
+For macOS, install Rust, Xcode, and [Zig](https://ziglang.org/download/) 0.17.0.
+Cargo builds and links `libghostty-vt` automatically.
 
 ```sh
-xcodebuild -downloadComponent MetalToolchain
+cd rust
+cargo run -p angelly
 ```
 
 ```sh
-zig build -Doptimize=ReleaseFast
-open zig-out/Angelly.app
+rust/scripts/bundle-macos.sh --debug
+open rust/target/bundle/Angelly.app
 ```
 
-Run targeted tests with, for example, `zig build test -Dtest-filter="adjust"`.
-See [HACKING.md](HACKING.md) for general development notes inherited from
-Ghostty.
+Run the bundle commands from the repository root. Run Rust tests with
+`cd rust && cargo test --workspace`, or a focused test such as
+`cargo test -p terminal --test term mouse_selection_gesture`.
+
+The root Zig build, `src/`, `include/`, `pkg/`, and `vendor/` remain dependencies
+of the Rust terminal backend. `macos/Assets.xcassets` supplies the packaging icons.
+The remaining upstream app code and build files are retained as reference; the
+Rust app is built with Cargo. [HACKING.md](HACKING.md) describes the inherited
+Ghostty code.
 
 ## Credits and license
 

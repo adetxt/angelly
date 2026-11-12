@@ -20,6 +20,7 @@ extension Ghostty {
         case paper
         case retro
         case xray
+        case attackOnTitan = "attack-on-titan"
         case custom
         case customStyle = "custom-style"
 
@@ -38,6 +39,7 @@ extension Ghostty {
             case .paper: return "PaperImage"
             case .retro: return "RetroImage"
             case .xray: return "XrayImage"
+            case .attackOnTitan: return "AttackOnTitanImage"
             case .custom, .customStyle: return nil
             }
         }

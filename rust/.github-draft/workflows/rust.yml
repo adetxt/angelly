@@ -1,0 +1,82 @@
+# Draft CI for the Rust port. Move to .github/workflows/ when the port ships.
+name: rust
+
+on:
+  pull_request:
+    paths: ["rust/**", "include/**", "src/**", "build.zig", "build.zig.zon"]
+  push:
+    branches: [main]
+    paths: ["rust/**", "include/**", "src/**", "build.zig", "build.zig.zon"]
+
+defaults:
+  run:
+    working-directory: rust
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Zig
+        working-directory: .
+        run: scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test --workspace
+      - name: Build the bundle
+        run: scripts/bundle-macos.sh --universal --sign -
+      - name: Bundle id and metadata
+        run: |
+          plutil -lint target/bundle/Angelly.app/Contents/Info.plist
+          codesign --verify --deep --strict target/bundle/Angelly.app
+          test -d target/bundle/Angelly.app/Contents/Resources/Metadata.appintents
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Angelly-macos
+          path: rust/target/bundle/Angelly.app
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Zig
+        working-directory: .
+        run: scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig-dev libxkbcommon-x11-dev libwayland-dev \
+            libxcb1-dev libvulkan-dev libasound2-dev libssl-dev desktop-file-utils appstream
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test --workspace
+      - name: Validate desktop metadata
+        run: |
+          desktop-file-validate packaging/linux/com.adetxt.angelly.desktop
+          appstreamcli validate --no-net packaging/linux/com.adetxt.angelly.metainfo.xml
+      - name: Package
+        run: scripts/package-linux.sh --deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Angelly-linux
+          path: rust/target/linux/*.deb
+
+  windows:
+    runs-on: windows-2025
+    # The terminal crate still calls Unix-only pty APIs, so this job is expected to fail
+    # until it is ported; it is not required.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo check --workspace

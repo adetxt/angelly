@@ -4,7 +4,7 @@ struct ColorizedGhosttyIcon {
     /// The colors that make up the gradient of the screen.
     let screenColors: [NSColor]
 
-    /// The color of the angel mascot.
+    /// The color of the wing and terminal prompt.
     let ghostColor: NSColor
 
     /// The frame type to use

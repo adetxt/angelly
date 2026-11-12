@@ -13,6 +13,7 @@ enum AppIcon: Equatable, Codable, Sendable {
     case paper
     case retro
     case xray
+    case attackOnTitan
     /// Save full image data to avoid sandboxing issues
     case custom(_ iconFile: Data)
     case customStyle(_ icon: ColorizedGhosttyIcon)
@@ -40,6 +41,8 @@ enum AppIcon: Equatable, Codable, Sendable {
             self = .retro
         case .xray:
             self = .xray
+        case .attackOnTitan:
+            self = .attackOnTitan
         case .custom:
             if let data = try? Data(contentsOf: URL(filePath: config.macosCustomIcon, relativeTo: nil)) {
                 self = .custom(data)
@@ -82,6 +85,8 @@ enum AppIcon: Equatable, Codable, Sendable {
             return bundle.image(forResource: "RetroImage")!
         case .xray:
             return bundle.image(forResource: "XrayImage")!
+        case .attackOnTitan:
+            return bundle.image(forResource: "AttackOnTitanImage")!
         case let .custom(file):
             return NSImage(data: file)
         case let .customStyle(customIcon):
