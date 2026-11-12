@@ -69,9 +69,11 @@ Run the bundle commands from the repository root. Run Rust tests with
 
 The root Zig build, `src/`, `include/`, `pkg/`, and `vendor/` remain dependencies
 of the Rust terminal backend. `macos/Assets.xcassets` supplies the packaging icons.
-The remaining upstream app code and build files are retained as reference; the
-Rust app is built with Cargo. [HACKING.md](HACKING.md) describes the inherited
-Ghostty code.
+The Swift/Xcode frontend has been removed. The Rust app is built with Cargo;
+`zig build` builds its terminal library, and `zig build resources` generates
+runtime resources for packaging. Shared Zig helpers and the inherited GTK code
+remain with the backend. [HACKING.md](HACKING.md) describes the inherited Ghostty
+code.
 
 ## Credits and license
 

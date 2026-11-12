@@ -41,9 +41,3 @@ target/
 /.claude/
 /.superpowers/
 /work/
-
-# Xcode user state and generated bundles.
-xcuserdata/
-*.xcuserstate
-/macos/build/
-/macos/GhosttyKit.xcframework/

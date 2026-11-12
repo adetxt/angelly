@@ -27,12 +27,27 @@ jobs:
       - name: Install Metal toolchain
         run: xcodebuild -downloadComponent MetalToolchain
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Test
+        working-directory: rust
+        run: cargo test --locked --workspace
+
       - name: Build
-        run: zig build -Doptimize=ReleaseFast
+        run: |
+          zig build resources -Doptimize=ReleaseFast --prefix "$RUNNER_TEMP/angelly-resources"
+          GHOSTTY_RESOURCES_SRC="$RUNNER_TEMP/angelly-resources/share" \
+            rust/scripts/bundle-macos.sh --universal --bundle-id com.adetxt.angelly
 
       - name: Check version matches tag
         run: |
-          built=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' zig-out/Angelly.app/Contents/Info.plist)
+          built=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' rust/target/bundle/Angelly.app/Contents/Info.plist)
           if [ "v$built" != "$GITHUB_REF_NAME" ]; then
             echo "tag $GITHUB_REF_NAME does not match app version $built (bump .version in build.zig.zon)" >&2
             exit 1
@@ -77,9 +92,8 @@ jobs:
           (cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")") > "$dmg.sha256"
           echo "DMG=$dmg" >> "$GITHUB_ENV"
 
-      # The app's update check reads appcast.xml from the latest release, so
-      # each release's appcast only needs to describe its own DMG. It is signed
-      # with the key whose public half is SUPublicEDKey in Ghostty-Info.plist.
+      # Installed Swift releases still need a signed appcast to update to Rust.
+      # SUPublicEDKey in the Rust bundle keeps the existing signing identity.
       - name: Generate appcast
         env:
           SPARKLE_VERSION: 2.9.6

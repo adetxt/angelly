@@ -9,7 +9,6 @@ const ApprtRuntime = @import("../apprt/runtime.zig").Runtime;
 const FontBackend = @import("../font/backend.zig").Backend;
 const RendererBackend = @import("../renderer/backend.zig").Backend;
 const TerminalBuildOptions = @import("../terminal/build_options.zig").Options;
-const XCFrameworkTarget = @import("xcframework.zig").Target;
 const WasmTarget = @import("../os/wasm/target.zig").Target;
 const expandPath = @import("../os/path.zig").expand;
 
@@ -19,7 +18,6 @@ const GitVersion = @import("GitVersion.zig");
 /// Standard build configuration options.
 optimize: std.lang.Optimize,
 target: std.Build.ResolvedTarget,
-xcframework_target: XCFrameworkTarget = .universal,
 wasm_target: WasmTarget,
 
 /// Comptime interfaces
@@ -58,7 +56,6 @@ emit_docs: bool = false,
 emit_exe: bool = false,
 emit_helpgen: bool = false,
 emit_lib_vt: bool = false,
-emit_macos_app: bool = false,
 emit_terminfo: bool = false,
 emit_termcap: bool = false,
 emit_test_exe: bool = false,
@@ -83,14 +80,13 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
     // `-Doptimize` and `-Dtarget`.
     const optimize = b.standardOptimizeOption(.{});
 
-    // Default dependency builds to libghostty-vt-only mode. Consumers can
-    // still explicitly disable this to request the full Ghostty build.
+    // Angelly's frontend is built with Cargo; Zig builds its terminal library.
     const is_dep = b.dep_prefix.len > 0;
     const emit_lib_vt = b.option(
         bool,
         "emit-lib-vt",
-        "Set defaults for a libghostty-vt-only build (disables xcframework, macOS app, and docs).",
-    ) orelse is_dep;
+        "Set defaults for a libghostty-vt-only build (disables xcframework and docs).",
+    ) orelse true;
     const target = target: {
         var result = b.standardTargetOptions(.{});
 
@@ -182,14 +178,6 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
         .is_dep = is_dep,
         .env = env,
     };
-
-    //---------------------------------------------------------------
-    // Target-specific properties
-    config.xcframework_target = b.option(
-        XCFrameworkTarget,
-        "xcframework-target",
-        "The target for the xcframework.",
-    ) orelse .universal;
 
     //---------------------------------------------------------------
     // Comptime Interfaces
@@ -563,29 +551,8 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
     config.emit_xcframework = b.option(
         bool,
         "emit-xcframework",
-        "Build and install the xcframework for the macOS library.",
-    ) orelse emit_xcfw: {
-        if (!builtin.target.os.tag.isDarwin() or target.result.os.tag != .macos)
-            break :emit_xcfw false;
-        if (config.emit_lib_vt) {
-            // In lib-vt mode default to whether xcodebuild is available,
-            // since xcodebuild is required to produce the XCFramework.
-            const path = expandPath(b.graph.io, b.allocator, &b.graph.environ_map, "xcodebuild") catch
-                break :emit_xcfw false;
-            defer if (path) |p| b.allocator.free(p);
-            break :emit_xcfw path != null;
-        }
-        break :emit_xcfw config.app_runtime == .none and
-            (!config.emit_bench and
-                !config.emit_test_exe and
-                !config.emit_helpgen);
-    };
-
-    config.emit_macos_app = b.option(
-        bool,
-        "emit-macos-app",
-        "Build and install the macOS app bundle.",
-    ) orelse !config.emit_lib_vt and config.emit_xcframework;
+        "Build and install a libghostty-vt XCFramework for Apple platforms.",
+    ) orelse false;
 
     //---------------------------------------------------------------
     // System Packages

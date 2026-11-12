@@ -22,8 +22,5 @@ vendor/glad/include/glad/glad.h: vendor/glad/include/glad/gl.h
 
 clean:
 	cd rust && cargo clean
-	rm -rf \
-		zig-out .zig-cache \
-		macos/build \
-		macos/GhosttyKit.xcframework
+	rm -rf zig-out .zig-cache zig-pkg
 .PHONY: clean

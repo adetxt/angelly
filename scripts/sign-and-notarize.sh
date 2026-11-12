@@ -3,7 +3,7 @@
 # into a DMG and sign, notarize and staple that too.
 #
 # Usage: scripts/sign-and-notarize.sh [path/to/Angelly.app] [output.dmg]
-# Defaults: zig-out/Angelly.app -> zig-out/Angelly-<version>.dmg
+# Defaults: rust/target/bundle/Angelly.app -> rust/target/bundle/Angelly-<version>.dmg
 #
 # Environment:
 #   SIGN_IDENTITY   codesign identity (default: the only "Developer ID
@@ -14,7 +14,7 @@
 # Prints the path of the notarized DMG.
 set -euo pipefail
 
-app="${1:-zig-out/Angelly.app}"
+app="${1:-rust/target/bundle/Angelly.app}"
 [ -d "$app" ] || { echo "app bundle not found: $app" >&2; exit 1; }
 
 identity="${SIGN_IDENTITY:-Developer ID Application}"
@@ -44,18 +44,7 @@ notarize() {
   fi
 }
 
-# Nested code must be signed before the bundle that contains it.
-sparkle="$app/Contents/Frameworks/Sparkle.framework"
-sign "$sparkle/Versions/B/XPCServices/Downloader.xpc"
-sign "$sparkle/Versions/B/XPCServices/Installer.xpc"
-sign "$sparkle/Versions/B/Autoupdate"
-sign "$sparkle/Versions/B/Updater.app"
-sign "$sparkle"
-sign "$app/Contents/PlugIns/DockTilePlugin.plugin"
-
-# The build embeds the ReleaseLocal entitlements, which include get-task-allow
-# and are rejected by notarization, so sign with the release set instead.
-sign --entitlements "$root/macos/Ghostty.entitlements" "$app"
+sign --entitlements "$root/rust/packaging/macos/Angelly.entitlements" "$app"
 codesign --verify --deep --strict "$app" >&2
 
 work=$(mktemp -d)

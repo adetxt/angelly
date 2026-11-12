@@ -11,9 +11,8 @@
 #   --no-build            reuse the binary already in target/
 #   --binary PATH         bundle this executable instead of building one
 #
-# The dev bundle id differs from the Swift app's (com.adetxt.angelly) so both can be
-# installed and addressed independently; pass --bundle-id com.adetxt.angelly for a
-# release build.
+# The dev bundle id differs from releases (com.adetxt.angelly) so both can be
+# installed independently; pass --bundle-id com.adetxt.angelly for a release.
 #
 # Environment:
 #   GHOSTTY_RESOURCES_SRC  a directory laid out like Contents/Resources of a built
@@ -59,7 +58,7 @@ cargo_profile=$profile
 target_dir="$rust/target"
 
 build_for() { # triple
-  (cd "$rust" && cargo build --profile "$cargo_profile" -p angelly --target "$1")
+  (cd "$rust" && cargo build --locked --profile "$cargo_profile" -p angelly --target "$1")
 }
 
 if [ -n "$binary_override" ]; then
@@ -77,7 +76,7 @@ elif [ "$universal" = 1 ]; then
   metadata_root="$target_dir/aarch64-apple-darwin/$profile"
 else
   if [ "$build" = 1 ]; then
-    (cd "$rust" && cargo build --profile "$cargo_profile" -p angelly)
+    (cd "$rust" && cargo build --locked --profile "$cargo_profile" -p angelly)
   fi
   binary="$target_dir/$profile/angelly"
   metadata_root="$target_dir/$profile"

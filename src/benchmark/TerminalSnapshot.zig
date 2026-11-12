@@ -44,7 +44,7 @@
 //!
 //! Build benchmarks in ReleaseFast mode:
 //!
-//!     zig build -Demit-bench -Doptimize=ReleaseFast -Demit-macos-app=false
+//!     zig build -Demit-lib-vt=false -Demit-bench -Doptimize=ReleaseFast
 //!
 //! Generate a deterministic corpus, then measure both directions:
 //!

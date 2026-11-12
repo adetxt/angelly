@@ -49,7 +49,7 @@ When making tradeoffs, in order:
 - Use `ghostty-bench +page-compression` (see `src/benchmark/AGENTS.md`
   for the general workflow). Modes: `compress`, `decompress`, `store`,
   and `report` for ratio.
-- Build: `zig build -Demit-bench -Doptimize=ReleaseFast -Demit-macos-app=false`
+- Build: `zig build -Demit-lib-vt=false -Demit-bench -Doptimize=ReleaseFast`
 - The most representative corpus is a raw dump of real page backing
   memory, chunked at the page size (400 KiB on ReleaseFast targets).
   Supplement with a text corpus and random bytes for worst cases, but

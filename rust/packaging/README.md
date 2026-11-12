@@ -7,6 +7,18 @@ definition, App Intents metadata, themes, shell integration, terminfo) and signs
 `--universal` joins arm64 and x86_64 builds with `lipo`. The development bundle id is
 `com.adetxt.angelly.rs`; pass `--bundle-id com.adetxt.angelly` for a release.
 
+To build runtime resources from this checkout rather than copy them from an
+installed app, run these commands from the repository root:
+
+```sh
+zig build resources -Doptimize=ReleaseFast --prefix "$PWD/zig-out"
+GHOSTTY_RESOURCES_SRC="$PWD/zig-out/share" rust/scripts/bundle-macos.sh --universal --bundle-id com.adetxt.angelly
+```
+
+Tag releases use this Rust bundle, then `scripts/sign-and-notarize.sh` signs,
+notarizes, and packages it. Signed Sparkle appcasts remain available for users
+upgrading from the retired Swift frontend.
+
 ## Linux
 
 `scripts/package-linux.sh` stages an FHS tree and can wrap it as a `.deb` (`--deb`,

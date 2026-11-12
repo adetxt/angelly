@@ -1,5 +1,4 @@
 const std = @import("std");
-const assert = std.debug.assert;
 const builtin = @import("builtin");
 const buildpkg = @import("src/build/main.zig");
 const translate_c = @import("translate_c");
@@ -89,6 +88,8 @@ pub fn build(b: *std.Build) !void {
 
     // Ghostty resources like terminfo, shell integration, themes, etc.
     const resources = try buildpkg.GhosttyResources.init(b, &config, &deps);
+    const resources_step = b.step("resources", "Install runtime resources for Rust packaging");
+    resources.addStepDependencies(resources_step);
     const i18n = if (config.i18n) try buildpkg.GhosttyI18n.init(b, &config) else null;
 
     // Ghostty executable, the actual runnable Ghostty program.
@@ -98,11 +99,6 @@ pub fn build(b: *std.Build) !void {
     const docs = try buildpkg.GhosttyDocs.init(b, &deps);
     if (config.emit_docs) {
         docs.install();
-    } else if (config.target.result.os.tag.isDarwin()) {
-        // If we aren't emitting docs we need to emit a placeholder so
-        // our macOS xcodeproject builds since it expects the `share/man`
-        // directory to exist to copy into the app bundle.
-        docs.installDummy(b.getInstallStep());
     }
 
     // Ghostty webdata
@@ -237,95 +233,12 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // macOS only artifacts. These will error if they're initialized for
-    // other targets. In lib-vt mode emit_xcframework controls the lib-vt
-    // xcframework above, not this one.
-    if (!config.emit_lib_vt and config.target.result.os.tag.isDarwin() and
-        (config.emit_xcframework or config.emit_macos_app))
+    // Run the Rust frontend; Cargo builds its terminal library as needed.
     {
-        // Ghostty xcframework
-        const xcframework = try buildpkg.GhosttyXCFramework.init(
-            b,
-            &deps,
-            config.xcframework_target,
-        );
-        if (config.emit_xcframework) {
-            xcframework.install();
-
-            // The xcframework build always installs resources because our
-            // macOS xcode project contains references to them.
-            resources.install();
-            if (i18n) |v| v.install();
-        }
-
-        // Ghostty macOS app
-        const macos_app = try buildpkg.GhosttyXcodebuild.init(
-            b,
-            &config,
-            .{
-                .xcframework = &xcframework,
-                .docs = &docs,
-                .i18n = if (i18n) |v| &v else null,
-                .resources = &resources,
-            },
-        );
-        if (config.emit_macos_app) {
-            macos_app.install();
-        }
-    }
-
-    // Run step
-    run: {
-        if (config.app_runtime != .none) {
-            const run_cmd = b.addRunArtifact(exe.exe);
-            run_cmd.addPassthruArgs();
-
-            // Set the proper resources dir so things like shell integration
-            // work correctly. If we're running `zig build run` in Ghostty,
-            // this also ensures it overwrites the release one with our debug
-            // build.
-            // FIXME: This is not possible after Zig 0.17.
-            // run_cmd.setEnvironmentVariable(
-            //     "GHOSTTY_RESOURCES_DIR",
-            //     b.getInstallPath(.prefix, "share/ghostty"),
-            // );
-
-            run_step.dependOn(&run_cmd.step);
-            break :run;
-        }
-
-        assert(config.app_runtime == .none);
-
-        // On macOS we can run the macOS app. For "run" we always force
-        // a native-only build so that we can run as quickly as possible.
-        if (!config.emit_lib_vt and
-            config.target.result.os.tag.isDarwin() and
-            (config.emit_xcframework or config.emit_macos_app))
-        {
-            const xcframework_native = try buildpkg.GhosttyXCFramework.init(
-                b,
-                &deps,
-                .native,
-            );
-            const macos_app_native_only = try buildpkg.GhosttyXcodebuild.init(
-                b,
-                &config,
-                .{
-                    .xcframework = &xcframework_native,
-                    .docs = &docs,
-                    .i18n = if (i18n) |v| &v else null,
-                    .resources = &resources,
-                },
-            );
-
-            // Run uses the native macOS app
-            run_step.dependOn(&macos_app_native_only.open.step);
-
-            // If we have no test filters, install the tests too
-            if (test_filters.len == 0) {
-                macos_app_native_only.addTestStepDependencies(test_step);
-            }
-        }
+        const run_cmd = b.addSystemCommand(&.{ "cargo", "run", "--manifest-path", "rust/Cargo.toml", "-p", "angelly" });
+        run_cmd.setCwd(b.path(""));
+        run_cmd.addPassthruArgs();
+        run_step.dependOn(&run_cmd.step);
     }
 
     // Valgrind
@@ -385,6 +298,8 @@ pub fn build(b: *std.Build) !void {
             test_lib_vt_build_step.dependOn(&mod_vt_c_test.step);
         }
     }
+
+    if (config.emit_lib_vt) test_step.dependOn(test_lib_vt_step);
 
     // Tests (skip when building libghostty-vt)
     if (!config.emit_lib_vt) {
