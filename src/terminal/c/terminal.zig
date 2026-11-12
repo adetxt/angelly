@@ -1485,6 +1485,7 @@ pub const Option = enum(c_int) {
     xt_checksum_extension = 45,
     program_status = 46,
     resize_window = 47,
+    shell_redraws_prompt = 48,
 
     /// Input type expected for setting the option.
     pub fn InType(comptime self: Option) type {
@@ -1520,6 +1521,7 @@ pub const Option = enum(c_int) {
             .title_report,
             .xt_checksum_report,
             .resize_pull_scrollback,
+            .shell_redraws_prompt,
             => ?*const bool,
             .kitty_image_medium_temp_file => ?*const lib.String,
             .apc_max_bytes,
@@ -1764,6 +1766,8 @@ fn setTyped(
             if (value) |ptr| ptr.* else kitty_clipboard.max_write_size,
         .resize_pull_scrollback => wrapper.terminal.flags.resize_pull_scrollback =
             if (value) |ptr| ptr.* else true,
+        .shell_redraws_prompt => wrapper.terminal.flags.shell_redraws_prompt =
+            if (value) |ptr| (if (ptr.*) .true else .false) else .false,
         .xt_checksum_extension => {
             const bits = if (value) |ptr| ptr.* else 0;
             const flags = std.math.cast(u5, bits) orelse return .invalid_value;
@@ -4465,6 +4469,26 @@ test "set resize pull scrollback" {
     // NULL restores the default.
     try testing.expectEqual(Result.success, set(t, .resize_pull_scrollback, null));
     try testing.expect(t.?.terminal.flags.resize_pull_scrollback);
+}
+
+test "set shell redraws prompt" {
+    var t: Terminal = null;
+    try testing.expectEqual(Result.success, new(
+        &lib.alloc.test_allocator,
+        &t,
+        80,
+        24,
+    ));
+    defer free(t);
+    try testing.expect(t.?.terminal.flags.shell_redraws_prompt == .false);
+
+    const enabled = true;
+    try testing.expectEqual(Result.success, set(t, .shell_redraws_prompt, &enabled));
+    try testing.expect(t.?.terminal.flags.shell_redraws_prompt == .true);
+
+    // NULL restores the default.
+    try testing.expectEqual(Result.success, set(t, .shell_redraws_prompt, null));
+    try testing.expect(t.?.terminal.flags.shell_redraws_prompt == .false);
 }
 
 test "set and get selection" {

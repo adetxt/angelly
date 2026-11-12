@@ -2780,6 +2780,23 @@ typedef enum GHOSTTY_ENUM_TYPED {
    * Input type: GhosttyTerminalResizeWindowFn
    */
   GHOSTTY_TERMINAL_OPT_RESIZE_WINDOW = 47,
+
+  /**
+   * Whether the shell redraws its prompt after a resize, so the terminal
+   * clears the prompt lines (found with OSC 133 semantic prompts) before
+   * the shell repaints them. A shell can still override this per prompt
+   * with the `redraw` option of OSC 133;A.
+   *
+   * Set this to true when the terminal installs Ghostty's shell integration
+   * or otherwise knows its shells redraw on SIGWINCH. Without it, a prompt
+   * that wraps differently at the new width stays on screen next to the
+   * redrawn one.
+   *
+   * A NULL value pointer resets to the built-in default of false.
+   *
+   * Input type: bool*
+   */
+  GHOSTTY_TERMINAL_OPT_SHELL_REDRAWS_PROMPT = 48,
   GHOSTTY_TERMINAL_OPT_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 } GhosttyTerminalOption;
 

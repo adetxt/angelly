@@ -17,7 +17,7 @@
 #
 # Pass extra flags to the Zig build with GHOSTTY_ZIG_BUILD_FLAGS:
 #
-#   cmake -B build -DGHOSTTY_ZIG_BUILD_FLAGS="-Demit-macos-app=false"
+#   cmake -B build -DGHOSTTY_ZIG_BUILD_FLAGS="-Demit-xcframework=false"
 #
 # Integrating into a downstream CMake project
 # ---------------------------------------------

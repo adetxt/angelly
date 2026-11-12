@@ -1,0 +1,12 @@
+[package]
+name = "vt-sys"
+version = "0.0.0"
+edition = "2021"
+links = "ghostty-vt"
+
+[build-dependencies]
+bindgen = "0.72"
+
+[lib]
+test = false
+doctest = false

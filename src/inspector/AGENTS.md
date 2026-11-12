@@ -8,5 +8,6 @@ terminal state.
   in the root: `find . -type f -name dcimgui.h`. Use the newest version.
 - See full examples of how to use every widget by loading this file:
   <https://raw.githubusercontent.com/ocornut/imgui/refs/heads/master/imgui_demo.cpp>
-- On macOS, run builds with `-Demit-macos-app=false` to verify API usage.
+- The inspector belongs to the inherited Zig frontend. Build it with
+  `zig build test -Demit-lib-vt=false -Dtest-filter=inspector` to verify API usage.
 - There are no unit tests in this package.

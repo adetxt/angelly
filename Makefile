@@ -1,5 +1,5 @@
 init:
-	@echo You probably want to run "zig build" instead.
+	cd rust && cargo build -p angelly
 .PHONY: init
 
 # glad updates the GLAD loader. To use this, place the generated glad.zip
@@ -21,8 +21,6 @@ vendor/glad/include/glad/glad.h: vendor/glad/include/glad/gl.h
 	@echo "#include <glad/gl.h>" > $@
 
 clean:
-	rm -rf \
-		zig-out .zig-cache \
-		macos/build \
-		macos/GhosttyKit.xcframework
+	cd rust && cargo clean
+	rm -rf zig-out .zig-cache zig-pkg
 .PHONY: clean

@@ -3605,6 +3605,7 @@ keybind: Keybinds = .{},
 ///  * `official` - Use the official Angelly icon.
 ///  * `blueprint`, `chalkboard`, `microchip`, `glass`, `holographic`,
 ///    `paper`, `egyptian`, `retro`, `xray` - Bundled Angelly icon variants.
+///  * `attack-on-titan` - Angelly's wing in green, navy, and ivory.
 ///  * `custom` - Use a completely custom icon. The location must be specified
 ///    using the additional `macos-custom-icon` configuration
 ///  * `custom-style` - Use the Angelly angel mascot with custom
@@ -9324,6 +9325,7 @@ pub const MacAppIcon = enum {
     retro,
     xray,
     egyptian,
+    @"attack-on-titan",
     custom,
     @"custom-style",
 };

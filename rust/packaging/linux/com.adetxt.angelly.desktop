@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Angelly
+GenericName=Terminal
+Comment=A fast, native terminal emulator
+Exec=angelly
+Icon=com.adetxt.angelly
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;cmd;
+StartupWMClass=com.adetxt.angelly
+StartupNotify=true
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=angelly msg new_window

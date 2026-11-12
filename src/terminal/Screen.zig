@@ -2388,7 +2388,7 @@ fn clearPromptForRedraw(
             },
 
             .true => {
-                const start = start: {
+                var start = start: {
                     var it = self.cursor.page_pin.promptIterator(
                         .left_up,
                         null,
@@ -2401,6 +2401,13 @@ fn clearPromptForRedraw(
                         break :prompt;
                     };
                 };
+
+                // Reflow marks every row of a wrapped prompt as a prompt, so
+                // the iterator can stop on a row the prompt wrapped onto.
+                // Start from the row where the wrapped line begins.
+                while (start.rowAndCell().row.wrap_continuation) {
+                    start = start.up(1) orelse break;
+                }
 
                 // Clear cells from our start down. We replace it with spaces,
                 // and do not physically erase the rows (eraseRows) because the
@@ -9315,6 +9322,34 @@ test "Screen: resize more cols with cursor at prompt" {
         const expected = "ABCDE";
         try testing.expectEqualStrings(expected, contents);
     }
+}
+
+test "Screen: resize less cols clears a prompt that wraps" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    var s = try init(io, alloc, .{ .cols = 10, .rows = 5, .max_scrollback_bytes = 5 });
+    defer s.deinit();
+
+    // zig fmt: off
+    try s.testWriteString("ABCDE\n");
+    s.cursorSetSemanticContent(.{ .prompt = .initial });
+    try s.testWriteString("> ");
+    s.cursorSetSemanticContent(.{ .input = .clear_eol });
+    try s.testWriteString("echo");
+    // zig fmt: on
+
+    // The prompt wraps onto a second row, which reflow also marks as a prompt.
+    try s.resize(.{
+        .cols = 4,
+        .rows = 5,
+        .prompt_redraw = .true,
+    });
+
+    const contents = try s.dumpStringAlloc(alloc, .{ .viewport = .{} });
+    defer alloc.free(contents);
+    try testing.expectEqualStrings("ABCD\nE", contents);
 }
 
 test "Screen: resize more cols with cursor not at prompt" {

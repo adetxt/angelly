@@ -4,16 +4,25 @@ A file for [guiding coding agents](https://agents.md/).
 
 ## Commands
 
-- **Build:** `zig build`
-  - If you're on macOS and don't need to build the macOS app, use
-    `-Demit-macos-app=false` to skip building the app bundle and speed up
-    compilation.
+The application lives in the Rust workspace under `rust/`. Cargo builds the
+Ghostty Zig terminal library automatically.
+
+- **Build app:** `cd rust && cargo build -p angelly`
+- **Run app:** `cd rust && cargo run -p angelly`
+- **Test Rust:** `cd rust && cargo test --workspace`
+- **Targeted terminal tests:** `cd rust && cargo test -p terminal --test term <filter>`
+- **macOS bundle:** `rust/scripts/bundle-macos.sh --debug` (from the repo root)
+
+The commands below apply to the Ghostty terminal backend:
+
+- **Build library:** `zig build`
+- **Build runtime resources:** `zig build resources`
 - **Test (Zig):** `zig build test`
   - Prefer to run targeted tests with `-Dtest-filter` because the full
     test suite is slow to run.
 - **Test filter (Zig)**: `zig build test -Dtest-filter=<test name>`
 - **Formatting (Zig)**: `zig fmt .`
-- **Formatting (Swift)**: `swiftlint lint --strict --fix`
+- **Formatting (Swift shim)**: `swiftlint lint --strict --fix rust/crates/app/shim`
 - **Formatting (other)**: `prettier -w .`
 
 ## libghostty-vt
@@ -29,8 +38,9 @@ A file for [guiding coding agents](https://agents.md/).
 ## Directory Structure
 
 - Shared Zig core: `src/`
-- macOS app: `macos/`
-- GTK (Linux and FreeBSD) app: `src/apprt/gtk`
+- Rust frontend and platform shim: `rust/crates/app/`
+- Packaging icons: `macos/Assets.xcassets/`
+- Inherited GTK reference code: `src/apprt/gtk`
 
 ## Commit Guidelines
 
