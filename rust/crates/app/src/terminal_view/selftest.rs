@@ -11,6 +11,8 @@
 //! * `type:<text>`: press each character as a key
 //! * `key:<keystroke>[#<code>]`: press a key (`cmd-f`, `ctrl-c`, `up`), optionally with the
 //!   macOS virtual key code a real press carries (`key:ctrl-с#8` is Ctrl-C on a Russian layout)
+//! * `press:<keystroke>`: like `key`, but through the window's full dispatch, so action keybinds
+//!   (`escape` bound to `end_search`) run before the terminal sees the key
 //! * `ime:<text>` and `commit:<text>`: input method composition
 //! * `click:<col>,<row>[,<mods>][,<count>]` (mods: `cmd` `alt` `shift` `ctrl`)
 //! * `drag:<col>,<row>,<col>,<row>[,<mods>]`
@@ -41,6 +43,7 @@ enum Step {
     Send(String),
     Type(String),
     Key(String, Option<u16>),
+    Press(String),
     Ime(String),
     Commit(String),
     Click { cell: (u16, u16), mods: Modifiers, count: usize },
@@ -111,6 +114,7 @@ fn parse_step(step: &str) -> Option<Step> {
             Some((spec, code)) => Step::Key(spec.to_string(), Some(code.parse().ok()?)),
             None => Step::Key(arg.to_string(), None),
         },
+        "press" => Step::Press(arg.to_string()),
         "ime" => Step::Ime(arg.to_string()),
         "commit" => Step::Commit(arg.to_string()),
         "click" => {
@@ -179,6 +183,17 @@ pub fn start(_: &mut TerminalView, window: &mut Window, cx: &mut Context<Termina
                 cx.background_executor().timer(d).await;
                 continue;
             }
+            if let Step::Press(spec) = &step {
+                match keystroke(spec) {
+                    Some(keystroke) => {
+                        let event = PlatformInput::KeyDown(KeyDownEvent { keystroke, is_held: false, prefer_character_input: false });
+                        cx.update(|window, cx| window.dispatch_event(event, cx)).ok();
+                    }
+                    None => eprintln!("[selftest] bad key {spec:?}"),
+                }
+                cx.background_executor().timer(Duration::from_millis(30)).await;
+                continue;
+            }
             let quit = matches!(step, Step::Quit);
             if this.update_in(cx, |this, window, cx| this.run_step(step, window, cx)).is_err() {
                 break;
@@ -230,6 +245,7 @@ impl TerminalView {
                 Some(ks) => self.key_down(ks, false, code, window, cx),
                 None => eprintln!("[selftest] bad key {spec:?}"),
             },
+            Step::Press(_) => {}
             Step::Ime(text) => {
                 let end = text.encode_utf16().count();
                 EntityInputHandler::replace_and_mark_text_in_range(self, None, &text, Some(end..end), window, cx);
