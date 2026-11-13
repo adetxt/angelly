@@ -89,7 +89,7 @@ pub fn init(cx: &mut App, host: Rc<dyn Host>) {
     open::flush_pending(cx);
 }
 
-/// Applies the parts of the configuration the platform layer owns: the Dock icon and
+/// Applies the parts of the configuration the platform layer owns: the app icon and
 /// the global keybinds. Call it again after the configuration reloads.
 pub fn apply_config(cx: &mut App) {
     app_icon::apply(cx);
