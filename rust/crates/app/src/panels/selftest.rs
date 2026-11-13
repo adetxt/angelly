@@ -111,7 +111,10 @@ struct FixtureDownloader {
 }
 
 impl Downloader for FixtureDownloader {
-    fn download(&self, _: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
+    fn download(&self, url: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
+        if url.ends_with(".sha256") {
+            return std::fs::write(destination, checksum()).map_err(|e| UpdateError::DownloadFailed(e.to_string()));
+        }
         let total = PACKAGE_BYTES.len() as u64;
         progress(Some(total), total * 2 / 5);
         if self.stall {
@@ -128,7 +131,6 @@ fn fixture_update(version: &str) -> UpdateController {
     let respond = move |request: &angelly_core::http::HttpRequest| match (variant.as_deref(), request.url.as_str()) {
         (Some("error"), _) => Err(HttpError("offline".to_string())),
         (Some("uptodate"), _) => Ok(HttpResponse::new(404, Vec::new())),
-        (_, url) if url.ends_with(".sha256") => Ok(HttpResponse::new(200, checksum().into_bytes())),
         _ => Ok(HttpResponse::new(200, release_json().into_bytes())),
     };
     let http: Arc<dyn HttpClient> = Arc::new(FnHttpClient(respond));
@@ -136,8 +138,7 @@ fn fixture_update(version: &str) -> UpdateController {
     UpdateController::with(
         version,
         std::env::temp_dir().join("angelly-selftest-updates"),
-        UpdateChecker::new(http.clone()),
-        http,
+        UpdateChecker::new(http),
         Arc::new(FixtureDownloader { stall }),
     )
 }

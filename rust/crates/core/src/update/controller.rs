@@ -7,7 +7,6 @@ use super::download::{download_release, Downloader, UreqDownloader};
 use super::release::{CheckOutcome, ReleaseInfo, UpdateChecker, UpdateError};
 use super::state::UpdateState;
 use crate::config::AutoUpdate;
-use crate::http::HttpClient;
 
 /// How often background checks run while automatic updates are enabled.
 pub const AUTOMATIC_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -41,7 +40,6 @@ struct Shared {
     current: Mutex<Current>,
     subscribers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
     checker: UpdateChecker,
-    http: Arc<dyn HttpClient>,
     downloader: Arc<dyn Downloader>,
     current_version: String,
     download_dir: PathBuf,
@@ -59,14 +57,13 @@ pub struct UpdateController {
 impl UpdateController {
     pub fn new(current_version: impl Into<String>, download_dir: impl Into<PathBuf>) -> Self {
         let http = crate::http::UreqClient::shared();
-        Self::with(current_version, download_dir, UpdateChecker::new(http.clone()), http, Arc::new(UreqDownloader::default()))
+        Self::with(current_version, download_dir, UpdateChecker::new(http), Arc::new(UreqDownloader::default()))
     }
 
     pub fn with(
         current_version: impl Into<String>,
         download_dir: impl Into<PathBuf>,
         checker: UpdateChecker,
-        http: Arc<dyn HttpClient>,
         downloader: Arc<dyn Downloader>,
     ) -> Self {
         Self {
@@ -74,7 +71,6 @@ impl UpdateController {
                 current: Mutex::new(Current { state: UpdateState::Idle, generation: 0, downloaded: None }),
                 subscribers: Mutex::new(Vec::new()),
                 checker,
-                http,
                 downloader,
                 current_version: current_version.into(),
                 download_dir: download_dir.into(),
@@ -229,7 +225,7 @@ impl UpdateController {
             let result = std::fs::create_dir_all(&shared.download_dir)
                 .map_err(|e| UpdateError::DownloadFailed(e.to_string()))
                 .and_then(|()| {
-                    download_release(&release, &shared.download_dir, &shared.http, shared.downloader.as_ref(), &mut |expected_length, progress| {
+                    download_release(&release, &shared.download_dir, shared.downloader.as_ref(), &mut |expected_length, progress| {
                         controller.transition(generation, UpdateState::Downloading { expected_length, progress });
                     })
                 });
@@ -262,7 +258,7 @@ impl UpdateController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::{FnHttpClient, HttpRequest, HttpResponse};
+    use crate::http::{FnHttpClient, HttpClient, HttpRequest, HttpResponse};
     use std::path::Path;
     use std::sync::{Condvar, Mutex};
     use std::time::{Instant, UNIX_EPOCH};
@@ -298,10 +294,23 @@ mod tests {
         }
     }
 
-    struct FakeDownloader;
+    /// Serves the package bytes, and `checksum` for the `.sha256` URL.
+    struct FakeDownloader {
+        checksum: String,
+    }
+
+    impl FakeDownloader {
+        fn matching() -> Arc<Self> {
+            Arc::new(Self { checksum: format!("{DIGEST_OF_HELLO}  A.dmg\n") })
+        }
+    }
 
     impl Downloader for FakeDownloader {
-        fn download(&self, _: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
+        fn download(&self, url: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
+            if url.ends_with(".sha256") {
+                std::fs::write(destination, &self.checksum).unwrap();
+                return Ok(());
+            }
             progress(Some(5), 2);
             std::fs::write(destination, b"hello").unwrap();
             Ok(())
@@ -310,14 +319,11 @@ mod tests {
 
     fn controller(latest: &'static str, gate: Arc<Gate>, dir: &Path) -> UpdateController {
         let http: Arc<dyn HttpClient> = Arc::new(FnHttpClient(move |request: &HttpRequest| {
-            if request.url.ends_with("/releases/latest") {
-                gate.wait();
-                Ok(HttpResponse::new(200, release_json(latest)))
-            } else {
-                Ok(HttpResponse::new(200, format!("{DIGEST_OF_HELLO}  A.dmg\n")))
-            }
+            assert!(request.url.ends_with("/releases/latest"), "only the release lookup uses the API client");
+            gate.wait();
+            Ok(HttpResponse::new(200, release_json(latest)))
         }));
-        UpdateController::with("0.15.0", dir, UpdateChecker::new(http.clone()), http, Arc::new(FakeDownloader))
+        UpdateController::with("0.15.0", dir, UpdateChecker::new(http), FakeDownloader::matching())
     }
 
     fn wait_for(controller: &UpdateController, done: impl Fn(&UpdateState) -> bool) -> UpdateState {
@@ -349,7 +355,7 @@ mod tests {
         assert_eq!(wait_for(&current, |s| !matches!(s, UpdateState::Checking)), UpdateState::NotFound);
 
         let failing: Arc<dyn HttpClient> = Arc::new(FnHttpClient(|_: &HttpRequest| Err(crate::http::HttpError("offline".into()))));
-        let broken = UpdateController::with("0.15.0", dir.path(), UpdateChecker::new(failing.clone()), failing, Arc::new(FakeDownloader));
+        let broken = UpdateController::with("0.15.0", dir.path(), UpdateChecker::new(failing), FakeDownloader::matching());
         broken.check_for_updates();
         let state = wait_for(&broken, |s| !matches!(s, UpdateState::Checking));
         assert_eq!(state, UpdateState::Error { message: UpdateError::Network.to_string() });
@@ -399,13 +405,11 @@ mod tests {
     fn checksum_mismatch_becomes_an_error_and_leaves_no_file() {
         let dir = tempfile::tempdir().unwrap();
         let http: Arc<dyn HttpClient> = Arc::new(FnHttpClient(|request: &HttpRequest| {
-            if request.url.ends_with("/releases/latest") {
-                Ok(HttpResponse::new(200, release_json("0.16.0")))
-            } else {
-                Ok(HttpResponse::new(200, "0".repeat(64)))
-            }
+            assert!(request.url.ends_with("/releases/latest"), "only the release lookup uses the API client");
+            Ok(HttpResponse::new(200, release_json("0.16.0")))
         }));
-        let controller = UpdateController::with("0.15.0", dir.path(), UpdateChecker::new(http.clone()), http, Arc::new(FakeDownloader));
+        let downloader = Arc::new(FakeDownloader { checksum: "0".repeat(64) });
+        let controller = UpdateController::with("0.15.0", dir.path(), UpdateChecker::new(http), downloader);
         controller.check_for_updates();
         wait_for(&controller, |s| matches!(s, UpdateState::UpdateAvailable(_)));
         controller.confirm();

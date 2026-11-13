@@ -1,12 +1,10 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
 use super::release::{ReleaseAsset, ReleaseInfo, UpdateError};
-use crate::http::{HttpClient, HttpRequest};
 
 const MAX_CHECKSUM_BYTES: usize = 4096;
 
@@ -87,30 +85,43 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// Reads the digest published beside a package. Release assets are served through a
+/// redirect, so it travels through the redirect-following `downloader` rather than the
+/// API client, which must not follow redirects. Any failure to obtain a usable digest
+/// means the package can't be verified.
+fn fetch_expected_digest(asset: &ReleaseAsset, scratch: &Path, downloader: &dyn Downloader) -> Result<String, UpdateError> {
+    downloader.download(&asset.url, scratch, &mut |_, _| {}).map_err(|e| match e {
+        UpdateError::Network => UpdateError::Network,
+        _ => UpdateError::MissingChecksum,
+    })?;
+    let mut text = Vec::new();
+    let read = std::fs::File::open(scratch).and_then(|f| f.take(MAX_CHECKSUM_BYTES as u64 + 1).read_to_end(&mut text));
+    let _ = std::fs::remove_file(scratch);
+    read.map_err(|_| UpdateError::MissingChecksum)?;
+    if text.len() > MAX_CHECKSUM_BYTES {
+        return Err(UpdateError::MissingChecksum);
+    }
+    parse_checksum(&String::from_utf8_lossy(&text)).ok_or(UpdateError::MissingChecksum)
+}
+
 /// Downloads a release's package into `directory` and checks it against the checksum
 /// published beside it. A package without a published checksum is refused, and a file
 /// that doesn't match is deleted.
 pub fn download_release(
     release: &ReleaseInfo,
     directory: &Path,
-    http: &Arc<dyn HttpClient>,
     downloader: &dyn Downloader,
     progress: &mut dyn FnMut(Option<u64>, u64),
 ) -> Result<PathBuf, UpdateError> {
     let package: &ReleaseAsset = release.package.as_ref().ok_or(UpdateError::NoPackage)?;
     let checksum_asset = release.checksum.as_ref().ok_or(UpdateError::MissingChecksum)?;
 
-    let response = http.get(&HttpRequest::get(&checksum_asset.url).header("User-Agent", "Angelly"));
-    let expected = match response {
-        Ok(r) if r.status == 200 && r.body.len() <= MAX_CHECKSUM_BYTES => {
-            parse_checksum(&String::from_utf8_lossy(&r.body)).ok_or(UpdateError::MissingChecksum)?
-        }
-        Ok(_) => return Err(UpdateError::MissingChecksum),
-        Err(_) => return Err(UpdateError::Network),
-    };
-
     let file_name = Path::new(&package.name).file_name().ok_or(UpdateError::NoPackage)?;
     let destination = directory.join(file_name);
+    let mut scratch = destination.clone().into_os_string();
+    scratch.push(".sha256");
+    let expected = fetch_expected_digest(checksum_asset, Path::new(&scratch), downloader)?;
+
     downloader.download(&package.url, &destination, progress)?;
     let actual = sha256_file(&destination).map_err(|_| UpdateError::DownloadFailed("couldn't read the file".to_string()))?;
     if actual != expected {
@@ -123,17 +134,32 @@ pub fn download_release(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::{FnHttpClient, HttpResponse};
 
     const DIGEST_OF_HELLO: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
-    struct FakeDownloader(&'static [u8]);
+    /// Serves `package` for the package URL and `checksum` (or an HTTP 404) for the
+    /// `.sha256` URL, like a CDN behind a redirect.
+    struct FakeDownloader {
+        package: &'static [u8],
+        checksum: Option<String>,
+    }
+
+    impl FakeDownloader {
+        fn new(checksum: Option<&str>) -> Self {
+            Self { package: b"hello", checksum: checksum.map(str::to_string) }
+        }
+    }
 
     impl Downloader for FakeDownloader {
-        fn download(&self, _: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
-            progress(Some(self.0.len() as u64), 0);
-            std::fs::write(destination, self.0).unwrap();
-            progress(Some(self.0.len() as u64), self.0.len() as u64);
+        fn download(&self, url: &str, destination: &Path, progress: &mut dyn FnMut(Option<u64>, u64)) -> Result<(), UpdateError> {
+            let body = if url.ends_with(".sha256") {
+                self.checksum.clone().ok_or_else(|| UpdateError::DownloadFailed("HTTP 404".to_string()))?.into_bytes()
+            } else {
+                self.package.to_vec()
+            };
+            progress(Some(body.len() as u64), 0);
+            std::fs::write(destination, &body).unwrap();
+            progress(Some(body.len() as u64), body.len() as u64);
             Ok(())
         }
     }
@@ -147,13 +173,6 @@ mod tests {
         }
     }
 
-    fn http(body: &'static str, status: u16) -> Arc<dyn HttpClient> {
-        Arc::new(FnHttpClient(move |request: &HttpRequest| {
-            assert_eq!(request.url, "https://example.invalid/Angelly-1.0.0.dmg.sha256");
-            Ok(HttpResponse::new(status, body))
-        }))
-    }
-
     #[test]
     fn checksum_formats() {
         assert_eq!(parse_checksum(&format!("{DIGEST_OF_HELLO}  Angelly.dmg\n")).as_deref(), Some(DIGEST_OF_HELLO));
@@ -164,23 +183,24 @@ mod tests {
     }
 
     #[test]
-    fn verified_download_returns_the_path_and_reports_progress() {
+    fn verified_download_returns_the_path_and_reports_package_progress() {
         let dir = tempfile::tempdir().unwrap();
-        let body: &'static str = Box::leak(format!("{DIGEST_OF_HELLO}  Angelly-1.0.0.dmg\n").into_boxed_str());
+        let downloader = FakeDownloader::new(Some(&format!("{DIGEST_OF_HELLO}  Angelly-1.0.0.dmg\n")));
         let mut seen = Vec::new();
-        let path = download_release(&release(), dir.path(), &http(body, 200), &FakeDownloader(b"hello"), &mut |e, p| seen.push((e, p))).unwrap();
+        let path = download_release(&release(), dir.path(), &downloader, &mut |e, p| seen.push((e, p))).unwrap();
         assert_eq!(path, dir.path().join("Angelly-1.0.0.dmg"));
         assert_eq!(std::fs::read(path).unwrap(), b"hello");
         assert_eq!(seen, vec![(Some(5), 0), (Some(5), 5)]);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "the checksum scratch file is removed");
     }
 
     #[test]
     fn mismatched_download_is_deleted() {
         let dir = tempfile::tempdir().unwrap();
-        let body: &'static str = Box::leak(format!("{}  x\n", "0".repeat(64)).into_boxed_str());
-        let result = download_release(&release(), dir.path(), &http(body, 200), &FakeDownloader(b"hello"), &mut |_, _| {});
+        let downloader = FakeDownloader::new(Some(&format!("{}  x\n", "0".repeat(64))));
+        let result = download_release(&release(), dir.path(), &downloader, &mut |_, _| {});
         assert_eq!(result, Err(UpdateError::ChecksumMismatch));
-        assert!(!dir.path().join("Angelly-1.0.0.dmg").exists());
+        assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
     }
 
     #[test]
@@ -188,13 +208,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut unverified = release();
         unverified.checksum = None;
-        let no_http: Arc<dyn HttpClient> = Arc::new(FnHttpClient(|_: &HttpRequest| panic!("no request without a checksum asset")));
-        let result = download_release(&unverified, dir.path(), &no_http, &FakeDownloader(b"hello"), &mut |_, _| {});
+        let result = download_release(&unverified, dir.path(), &FakeDownloader::new(None), &mut |_, _| panic!("no download without a checksum"));
         assert_eq!(result, Err(UpdateError::MissingChecksum));
 
-        for (body, status) in [("garbage", 200), (DIGEST_OF_HELLO, 404)] {
-            let result = download_release(&release(), dir.path(), &http(body, status), &FakeDownloader(b"hello"), &mut |_, _| {});
-            assert_eq!(result, Err(UpdateError::MissingChecksum));
+        let oversized = "a".repeat(MAX_CHECKSUM_BYTES + 1);
+        for checksum in [Some("garbage"), Some(oversized.as_str()), None] {
+            let result = download_release(&release(), dir.path(), &FakeDownloader::new(checksum), &mut |_, _| panic!("package must not download"));
+            assert_eq!(result, Err(UpdateError::MissingChecksum), "{checksum:?}");
         }
         assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
     }
@@ -204,8 +224,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut sneaky = release();
         sneaky.package.as_mut().unwrap().name = "../../evil.dmg".to_string();
-        let body: &'static str = Box::leak(format!("{DIGEST_OF_HELLO}\n").into_boxed_str());
-        let path = download_release(&sneaky, dir.path(), &http(body, 200), &FakeDownloader(b"hello"), &mut |_, _| {}).unwrap();
+        let downloader = FakeDownloader::new(Some(&format!("{DIGEST_OF_HELLO}\n")));
+        let path = download_release(&sneaky, dir.path(), &downloader, &mut |_, _| {}).unwrap();
         assert_eq!(path, dir.path().join("evil.dmg"));
     }
 
