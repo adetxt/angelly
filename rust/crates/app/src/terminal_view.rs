@@ -15,6 +15,7 @@ mod element;
 mod exit;
 mod font;
 mod glyphs;
+mod images;
 mod input;
 mod links;
 mod macos;
@@ -198,7 +199,10 @@ impl TerminalView {
         });
 
         let id = cx.entity_id().as_u64();
-        cx.on_release(move |this, cx| this.request_secure_input(id, false, cx)).detach();
+        cx.on_release(move |this, cx| {
+            this.request_secure_input(id, false, cx);
+            this.painter.images.clear(cx);
+        }).detach();
         let theme_subscription = cx.observe_global::<Theme>(|this, cx| this.reload_config(cx));
 
         TerminalView {

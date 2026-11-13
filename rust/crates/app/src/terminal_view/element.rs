@@ -227,6 +227,7 @@ struct RowEntry {
 #[derive(Default)]
 pub struct Painter {
     rows: Vec<Option<RowEntry>>,
+    pub(super) images: super::images::ImageCache,
 }
 
 /// Everything the paint pass reads, captured once per frame.
@@ -622,6 +623,7 @@ fn build_row(row: &terminal::Row, spans: &[Span], inputs: &RowInputs, window: &W
     for (x, cell) in cells.iter().enumerate() {
         let (fg, _) = styled[x];
         let skip = cell.is_empty()
+            || cell.ch == '\u{10eeee}'
             || cell.wide == Wide::SpacerTail
             || cell.wide == Wide::SpacerHead
             || cell.flags.contains(CellFlags::INVISIBLE);
@@ -700,6 +702,8 @@ impl PaintState {
         let mut bg = hsla_of(palette.bg);
         bg.a = settings.background_opacity;
         window.paint_quad(fill(bounds, bg));
+        self.painter.images.update(&self.frame.images, window, cx);
+        self.painter.images.paint(&self.frame, terminal::ImageLayer::BelowBackground, origin, metrics, window);
 
         let spans = spans_for_rows(&self.frame, &self.matches, self.current_match);
         let cursor = self.cursor(&palette);
@@ -745,6 +749,8 @@ impl PaintState {
             }
         }
 
+        self.painter.images.paint(&self.frame, terminal::ImageLayer::BelowText, origin, metrics, window);
+
         if let Some(c) = cursor {
             self.paint_cursor(c, origin, metrics, window);
         }
@@ -769,6 +775,8 @@ impl PaintState {
                 paint_deco(window, d, cell_x(d.start), top, cw, metrics);
             }
         }
+
+        self.painter.images.paint(&self.frame, terminal::ImageLayer::AboveText, origin, metrics, window);
 
         if let Some(link) = &self.link {
             let color = hsla_of(palette.fg);

@@ -24,6 +24,67 @@ fn text(t: &mut Term) -> String {
 }
 
 #[test]
+fn kitty_images_terminal_identity_enables_discordo_detection() {
+    let mut t = term(10, 5);
+    feed(&mut t, "\x1b[>q");
+    assert_eq!(t.take_pty_output(), b"\x1bP>|ghostty 0.0.0\x1b\\");
+    t.set_program_version("0.18.0");
+    feed(&mut t, "\x1b[>q");
+    assert_eq!(t.take_pty_output(), b"\x1bP>|ghostty 0.18.0\x1b\\");
+}
+
+#[test]
+fn kitty_images_discordo_placeholders_preserve_pixels() {
+    use std::sync::Arc;
+    let mut t = term(10, 5);
+    // Discordo's tview widget sends chunked RGBA and a virtual placement, then
+    // encodes image ID 8 and the source row/column in Unicode placeholders.
+    feed(&mut t, "\x1b_Ga=T,U=1,f=32,s=2,v=1,q=2,i=8,c=2,r=1,m=1;/wAA\x1b\\");
+    feed(&mut t, "\x1b_Gm=0;gAD/AP8=\x1b\\");
+    feed(&mut t, "\x1b[2;4H\x1b[38;5;8m\u{10eeee}\u{305}\u{305}\u{305}\u{10eeee}\u{305}\u{30d}\u{305}\x1b[0m");
+    let mut f = frame(&mut t);
+    assert_eq!(f.images.len(), 1);
+    let p = &f.images[0];
+    assert_eq!((p.col, p.row), (3, 1));
+    assert_eq!(p.size, (20, 10));
+    assert_eq!(p.source, (0, 0, 2, 1));
+    assert_eq!((p.image.width, p.image.height), (2, 1));
+    assert_eq!(p.image.rgba, [255, 0, 0, 128, 0, 255, 0, 255]);
+    let pixels = p.image.clone();
+    assert!(!t.update_frame(&mut f));
+    assert!(Arc::ptr_eq(&pixels, &f.images[0].image));
+    feed(&mut t, "\x1b[4;1Htext");
+    assert!(t.update_frame(&mut f));
+    assert!(Arc::ptr_eq(&pixels, &f.images[0].image));
+    feed(&mut t, "\x1b[2;4H  ");
+    assert!(t.update_frame(&mut f));
+    assert!(f.images.is_empty());
+}
+
+#[test]
+fn kitty_images_fixed_placement_updates_scrolls_and_deletes() {
+    let mut t = term(10, 5);
+    feed(&mut t, "\x1b[3;2H\x1b_Ga=T,f=24,s=1,v=1,i=1,c=2,r=2,q=2,z=-1;/wAA\x1b\\");
+    let mut f = frame(&mut t);
+    assert_eq!(f.images.len(), 1);
+    assert_eq!(f.images[0].layer, ImageLayer::BelowText);
+    assert_eq!((f.images[0].col, f.images[0].row), (1, 2));
+    assert_eq!(f.images[0].size, (20, 40));
+    assert_eq!(f.images[0].image.rgba, [255, 0, 0, 255]);
+    let generation = f.images[0].image.generation;
+    feed(&mut t, "\x1b[3;2H\x1b_Ga=T,f=24,s=1,v=1,i=1,c=2,r=2,q=2,z=-1;AAD/\x1b\\");
+    assert!(t.update_frame(&mut f));
+    assert_ne!(f.images[0].image.generation, generation);
+    assert_eq!(f.images[0].image.rgba, [0, 0, 255, 255]);
+    feed(&mut t, "\x1b[5;1H\r\n");
+    assert!(t.update_frame(&mut f));
+    assert_eq!(f.images[0].row, 1);
+    feed(&mut t, "\x1b_Ga=d,d=I,i=1,q=2\x1b\\");
+    assert!(t.update_frame(&mut f));
+    assert!(f.images.is_empty());
+}
+
+#[test]
 fn plain_text_and_cursor() {
     let mut t = term(20, 5);
     feed(&mut t, "hello\r\nworld");

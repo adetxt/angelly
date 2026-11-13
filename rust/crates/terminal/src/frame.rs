@@ -4,6 +4,7 @@ use vt_sys as sys;
 
 use crate::{
     ffi::*,
+    ImagePlacement,
     term::{Scrollbar, Term},
     types::{CellFlags, Colors, CursorStyle, Rgb, Underline, Wide},
 };
@@ -117,6 +118,8 @@ pub enum Dirty {
 /// are re-extracted.
 #[derive(Clone, Debug)]
 pub struct Frame {
+    pub images: Vec<ImagePlacement>,
+    pub(crate) images_generation: Option<u64>,
     pub rows: Vec<Row>,
     pub cols: u16,
     pub colors: Colors,
@@ -130,6 +133,8 @@ pub struct Frame {
 impl Default for Frame {
     fn default() -> Self {
         Frame {
+            images: Vec::new(),
+            images_generation: None,
             rows: Vec::new(),
             cols: 0,
             colors: Colors::new(Rgb::new(0xdd, 0xdd, 0xdd), Rgb::new(0x11, 0x11, 0x11)),
@@ -175,6 +180,7 @@ impl Term {
             };
         }
 
+        let images_changed = self.update_images(frame);
         let scrollbar = self.scrollbar();
         let alt_screen = self.is_alt_screen();
         let dirty = match state_get::<sys::GhosttyRenderStateDirty::Type>(
@@ -235,7 +241,7 @@ impl Term {
             for row in &mut frame.rows {
                 row.dirty = false;
             }
-            return side_changed || frame.cursor != before;
+            return images_changed || side_changed || frame.cursor != before;
         }
 
         let mut colors = sized::<sys::GhosttyRenderStateColors>(|c, n| c.size = n);
