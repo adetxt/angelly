@@ -172,6 +172,9 @@ impl Session {
             config.cell_height,
         );
         term.set_terminal_name(&launch.term);
+        if let Some(version) = &config.term_program_version {
+            term.set_program_version(version);
+        }
         term.set_option_as_alt(config.option_as_alt);
         term.set_grapheme_clustering(config.grapheme_clustering);
         if let Some(bytes) = config.scrollback_bytes {

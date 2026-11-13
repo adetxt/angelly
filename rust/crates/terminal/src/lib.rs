@@ -5,6 +5,7 @@ mod command;
 mod event;
 mod ffi;
 mod frame;
+mod images;
 mod input;
 mod key;
 mod launch;
@@ -19,6 +20,7 @@ mod types;
 pub use command::Command;
 pub use event::*;
 pub use frame::{Cell, Cursor, Dirty, Frame, Row};
+pub use images::{Image, ImageLayer, ImagePlacement};
 pub use input::{
     encode_focus, encode_paste, paste_is_safe, MouseAction, MouseButton, MouseEvent, PasteError,
     Wheel,

@@ -79,6 +79,7 @@ const SYNC_OUTPUT_TIMEOUT: Duration = Duration::from_secs(1);
 /// State shared with the C callbacks. Lives in a `Box` so its address is
 /// stable for the lifetime of the terminal.
 pub(crate) struct Inner {
+    pub version: String,
     pub events: VecDeque<Event>,
     pub pty_out: Vec<u8>,
     pub title_changed: bool,
@@ -184,6 +185,7 @@ impl Term {
                 cell_height: 0,
             };
             let inner = Box::into_raw(Box::new(Inner {
+                version: format!("ghostty {}", env!("CARGO_PKG_VERSION")),
                 events: VecDeque::new(),
                 pty_out: Vec::new(),
                 title_changed: false,
@@ -200,6 +202,7 @@ impl Term {
             };
             use sys::GhosttyTerminalOption as O;
             set(O::GHOSTTY_TERMINAL_OPT_USERDATA, inner as *const c_void);
+            set(O::GHOSTTY_TERMINAL_OPT_XTVERSION, cb_xtversion as *const c_void);
             set(
                 O::GHOSTTY_TERMINAL_OPT_WRITE_PTY,
                 cb_write_pty as *const c_void,
@@ -463,6 +466,11 @@ impl Term {
                 &s as *const _ as *const c_void,
             );
         }
+    }
+
+    /// Matches TERM_PROGRAM's Ghostty identity for capability detection.
+    pub fn set_program_version(&mut self, version: &str) {
+        self.inner().version = format!("ghostty {version}");
     }
 
     /// Caps scrollback memory. Zero disables scrollback.
@@ -845,6 +853,14 @@ unsafe extern "C" fn cb_color_scheme(
         ColorScheme::Dark => sys::GhosttyColorScheme::GHOSTTY_COLOR_SCHEME_DARK,
     };
     true
+}
+
+unsafe extern "C" fn cb_xtversion(
+    _t: sys::GhosttyTerminal,
+    ud: *mut c_void,
+) -> sys::GhosttyString {
+    let version = &(*(ud as *const Inner)).version;
+    sys::GhosttyString { ptr: version.as_ptr(), len: version.len() }
 }
 
 unsafe extern "C" fn cb_device_attributes(
