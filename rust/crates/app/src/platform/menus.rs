@@ -6,8 +6,6 @@
 //! [`Command`] by a global handler, so a view can still claim an action by handling
 //! it on its own element.
 
-use std::rc::Rc;
-
 use gpui_kit::*;
 
 use angelly_core::config::{Trigger, TriggerKey};
@@ -360,27 +358,26 @@ fn physical_key(name: &str) -> Option<String> {
     Some(key.to_owned())
 }
 
-/// Where a trigger applies. A key pressed without ctrl, alt or super types text, so
-/// it belongs to the terminal: bound everywhere it would take Escape from every text
-/// field and overlay.
-fn binding_context(trigger: &Trigger) -> Option<Rc<KeyBindingContextPredicate>> {
+/// Whether a trigger is a key pressed without ctrl, alt or super. It types text, so the terminal's
+/// own matcher owns it: a binding here would take Escape from vim, and from every text field and
+/// overlay, before `performable:escape=end_search` could pass it through.
+fn is_bare(trigger: &Trigger) -> bool {
     let mods = &trigger.mods;
-    let typing = !(mods.ctrl || mods.alt || mods.super_key);
-    typing.then(|| KeyBindingContextPredicate::parse("Terminal").ok().map(Rc::new)).flatten()
+    !(mods.ctrl || mods.alt || mods.super_key)
 }
 
 macro_rules! synced {
     ($cx:expr, $config:expr, $($ghostty:literal => $action:expr),* $(,)?) => {{
         let mut bindings = Vec::new();
         $(
-            if let Some((keys, context)) = $config
+            if let Some(keys) = $config
                 .keybinds()
                 .trigger_for_action($ghostty)
-                .filter(|binding| !binding.flags.global && !binding.is_sequence())
-                .and_then(|binding| Some((gpui_keystroke(binding.trigger())?, binding_context(binding.trigger()))))
+                .filter(|binding| !binding.flags.global && !binding.is_sequence() && !is_bare(binding.trigger()))
+                .and_then(|binding| gpui_keystroke(binding.trigger()))
             {
                 bindings.extend(
-                    KeyBinding::load(&keys, Box::new($action), context, false, None, &*$cx)
+                    KeyBinding::load(&keys, Box::new($action), None, false, None, &*$cx)
                         .ok()
                         .map(|binding| binding.with_meta(crate::shortcuts::CONFIGURED)),
                 );
@@ -432,15 +429,15 @@ pub fn sync_shortcuts(cx: &mut App) {
 mod tests {
     use angelly_core::config::{Mods, Trigger, TriggerKey};
 
-    use super::{binding_context, gpui_keystroke};
+    use super::{gpui_keystroke, is_bare};
 
     #[test]
-    fn only_bare_keys_are_limited_to_the_terminal() {
-        let context = |text: &str| binding_context(&Trigger::parse(text).unwrap());
-        assert!(context("escape").is_some());
-        assert!(context("shift+f1").is_some());
-        assert!(context("super+f").is_none());
-        assert!(context("ctrl+n").is_none());
+    fn bare_keys_are_left_to_the_terminal() {
+        let bare = |text: &str| is_bare(&Trigger::parse(text).unwrap());
+        assert!(bare("escape"));
+        assert!(bare("shift+f1"));
+        assert!(!bare("super+f"));
+        assert!(!bare("ctrl+n"));
     }
 
     #[test]
