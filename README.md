@@ -8,6 +8,8 @@
   Your terminal, with wings.
   <br />
   A personal macOS fork of <a href="https://ghostty.org">Ghostty</a>.
+  <br />
+  <a href="https://angelly.web.app">Visit the Angelly website ↗</a>
 </p>
 
 Angelly is a native terminal with a Rust frontend built with GPUI and Ghostty's
