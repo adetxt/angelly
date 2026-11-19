@@ -8,6 +8,8 @@
   Your terminal, with wings.
   <br />
   A personal macOS fork of <a href="https://ghostty.org">Ghostty</a>.
+  <br />
+  <a href="https://angelly.web.app">Visit the Angelly website ↗</a>
 </p>
 
 Angelly is a native terminal with a Rust frontend built with GPUI and Ghostty's
@@ -47,6 +49,14 @@ The Rust app supports macOS and has Linux packaging. See
 
 Download the DMG from [Releases](https://github.com/adetxt/angelly/releases)
 and drag Angelly into Applications.
+
+Or install with Homebrew:
+
+1. Add the Angelly tap: `brew tap adetxt/angelly https://github.com/adetxt/angelly`
+2. Install Angelly: `brew install --cask adetxt/angelly/angelly`
+
+The Homebrew cask tracks the latest stable release. Update it with
+`brew upgrade --cask angelly`.
 
 ## Build
 
