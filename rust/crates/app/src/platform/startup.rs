@@ -8,6 +8,7 @@ use super::resources;
 /// Call first thing in `main`, before any thread is started, because it sets environment
 /// variables.
 pub fn prepare() {
+    super::panic_log::install(crate::panels::about::AppInfo::current().version);
     export_resource("GHOSTTY_RESOURCES_DIR", "ghostty");
     export_resource("TERMINFO", "terminfo");
     #[cfg(target_os = "macos")]

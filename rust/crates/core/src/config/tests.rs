@@ -429,3 +429,13 @@ fn every_known_key_is_unique_and_sorted() {
     let keys = known_keys::KNOWN_KEYS;
     assert!(keys.windows(2).all(|w| w[0] < w[1]));
 }
+
+#[test]
+fn font_size_stays_within_a_usable_range() {
+    assert_eq!(parse("font-size = 0\n").font_size(), 1.0);
+    assert_eq!(parse("font-size = -4\n").font_size(), 1.0);
+    assert_eq!(parse("font-size = 100000\n").font_size(), 512.0);
+    assert_eq!(parse("font-size = nan\n").font_size(), 13.0);
+    assert_eq!(parse("font-size = inf\n").font_size(), 13.0);
+    assert_eq!(parse("font-size = 14.5\n").font_size(), 14.5);
+}

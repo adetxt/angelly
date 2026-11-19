@@ -16,7 +16,7 @@ use terminal::{
 };
 
 use super::colors;
-use super::font::{FontSet, Metrics};
+use super::font::{self, FontSet, Metrics};
 use super::glyphs::{self, Shape};
 use super::input::{char_cells, Preedit};
 use super::mouse::{self, Link};
@@ -518,6 +518,8 @@ struct RunStyle {
     fg: Rgb,
     bold: bool,
     italic: bool,
+    /// Nerd Font icon, drawn with the symbols font.
+    symbol: bool,
 }
 
 struct Run {
@@ -597,7 +599,7 @@ fn build_row(row: &terminal::Row, spans: &[Span], inputs: &RowInputs, window: &W
     // Text: runs of narrow cells sharing a style, wide cells on their own.
     let text_system = window.text_system();
     let shape = |text: String, style: &RunStyle, force: f32| -> ShapedLine {
-        let font = inputs.fonts.face(style.bold, style.italic).clone();
+        let font = if style.symbol { inputs.fonts.symbols.clone() } else { inputs.fonts.face(style.bold, style.italic).clone() };
         let run = TextRun {
             len: text.len(),
             font,
@@ -640,8 +642,12 @@ fn build_row(row: &terminal::Row, spans: &[Span], inputs: &RowInputs, window: &W
             }
             continue;
         }
-        let style =
-            RunStyle { fg, bold: cell.flags.contains(CellFlags::BOLD), italic: cell.flags.contains(CellFlags::ITALIC) };
+        let style = RunStyle {
+            fg,
+            bold: cell.flags.contains(CellFlags::BOLD),
+            italic: cell.flags.contains(CellFlags::ITALIC),
+            symbol: cell.extra.is_none() && font::is_symbol(cell.ch),
+        };
         if cell.wide == Wide::Wide {
             flush(&mut items, run.take());
             let mut text = String::new();
@@ -651,7 +657,10 @@ fn build_row(row: &terminal::Row, spans: &[Span], inputs: &RowInputs, window: &W
         }
         let is_space = cell.ch == ' ' && cell.extra.is_none();
         if let Some(r) = &mut run {
-            let same = r.style.fg == style.fg && r.style.bold == style.bold && r.style.italic == style.italic;
+            let same = r.style.fg == style.fg
+                && r.style.bold == style.bold
+                && r.style.italic == style.italic
+                && r.style.symbol == style.symbol;
             if same || is_space {
                 cell.push_text(&mut r.text);
                 continue;

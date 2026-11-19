@@ -21,6 +21,7 @@ pub mod menus;
 mod menus_selftest;
 #[cfg(target_os = "macos")]
 mod notifications;
+mod panic_log;
 pub(crate) mod quick_terminal;
 pub(crate) mod window_controls;
 #[cfg(unix)]

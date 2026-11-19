@@ -32,6 +32,8 @@ pub use values::{
 const ANGELLY_DARK: &str = include_str!("../../themes/angelly-dark");
 const ANGELLY_LIGHT: &str = include_str!("../../themes/angelly-light");
 const DEFAULT_THEME: &str = "Angelly Dark";
+const MIN_FONT_SIZE: f32 = 1.0;
+const MAX_FONT_SIZE: f32 = 512.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorScheme {
@@ -245,9 +247,11 @@ impl Config {
         self.get_all("font-family")
     }
 
+    /// The configured size in points, kept within a range the terminal can lay out.
     pub fn font_size(&self) -> f32 {
         let default = if self.platform == Platform::MacOs { 13.0 } else { 12.0 };
-        self.number("font-size", default)
+        let size: f32 = self.number("font-size", default);
+        if size.is_finite() { size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE) } else { default }
     }
 
     pub fn font_thicken(&self) -> bool {
