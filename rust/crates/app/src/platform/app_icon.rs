@@ -3,6 +3,8 @@
 //! `macos-icon` selects one of the bundled variants, or a user image for `custom`.
 //! The variant images ship as `Resources/icons/<name>.png`.
 
+use std::sync::{Mutex, PoisonError};
+
 use gpui_kit::App;
 
 use crate::theme::Theme;
@@ -44,10 +46,26 @@ pub fn variant_for(config: &angelly_core::config::Config) -> Variant {
     }
 }
 
-/// Applies the icon chosen by the configuration. Safe to call again after a reload.
+/// The variant applied so far in this process.
+static APPLIED: Mutex<Option<Variant>> = Mutex::new(None);
+
+/// Applies the icon chosen by the configuration. Safe to call again after a reload:
+/// an unchanged choice does nothing, so the signed bundle is not rewritten on every
+/// settings change.
 pub fn apply(cx: &mut App) {
     let variant = variant_for(&cx.global::<Theme>().config);
-    imp::set_icon(&variant);
+    let mut applied = APPLIED.lock().unwrap_or_else(PoisonError::into_inner);
+    if applied.as_ref() == Some(&variant) {
+        return;
+    }
+    imp::set_icon(&variant, applied.is_none());
+    *applied = Some(variant);
+}
+
+/// Whether the icon has to be written into the app bundle. The default icon is the
+/// bundle's own, so at launch it is left alone unless an earlier custom icon is still there.
+fn rewrites_bundle(first_apply: bool, variant: &Variant, bundle_has_custom_icon: bool) -> bool {
+    !(first_apply && *variant == Variant::Official && !bundle_has_custom_icon)
 }
 
 /// The number shown on the Dock icon; zero clears it. Counts above 99 show "99+".
@@ -88,12 +106,13 @@ mod imp {
         NSImage::initWithContentsOfFile(NSImage::alloc(), &path)
     }
 
-    pub fn set_icon(variant: &Variant) {
+    pub fn set_icon(variant: &Variant, first_apply: bool) {
         let Some(mtm) = MainThreadMarker::new() else { return };
         let app = NSApplication::sharedApplication(mtm);
         let image = load(variant);
         let path = NSBundle::mainBundle().bundlePath();
-        if !set_bundle_icon(&path, image.as_deref()) {
+        let has_custom_icon = std::path::Path::new(&path.to_string()).join("Icon\r").exists();
+        if super::rewrites_bundle(first_apply, variant, has_custom_icon) && !set_bundle_icon(&path, image.as_deref()) {
             eprintln!("angelly: could not update the application icon at {path}");
         }
         // A `None` image restores the icon from the bundle.
@@ -186,7 +205,7 @@ mod imp {
 mod imp {
     use super::Variant;
 
-    pub fn set_icon(_: &Variant) {}
+    pub fn set_icon(_: &Variant, _: bool) {}
 
     pub fn set_badge(_: &str) {}
 
@@ -196,6 +215,15 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_bundle_is_only_rewritten_when_the_icon_needs_it() {
+        let named = Variant::Named("paper");
+        assert!(!rewrites_bundle(true, &Variant::Official, false));
+        assert!(rewrites_bundle(true, &Variant::Official, true));
+        assert!(rewrites_bundle(true, &named, false));
+        assert!(rewrites_bundle(false, &Variant::Official, false));
+    }
 
     #[test]
     fn badges_cap_at_ninety_nine() {

@@ -327,20 +327,16 @@ impl Term {
             cell_width,
             cell_height,
         };
+        let result = unsafe {
+            sys::ghostty_terminal_resize(self.raw, size.cols, size.rows, cell_width, cell_height)
+        };
+        if result != OK {
+            // Out of memory for the new grid: keep the old one instead of taking the app down.
+            eprintln!("angelly: resizing the terminal to {}x{} failed (code {result})", size.cols, size.rows);
+            return;
+        }
         self.size = size;
         self.inner().size = report_size(&size);
-        unsafe {
-            check(
-                sys::ghostty_terminal_resize(
-                    self.raw,
-                    size.cols,
-                    size.rows,
-                    cell_width,
-                    cell_height,
-                ),
-                "terminal_resize",
-            );
-        }
     }
 
     pub fn size(&self) -> Size {

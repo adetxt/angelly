@@ -63,6 +63,7 @@ mod imp {
                 duration: Duration::from_secs_f64(
                     get("quick-terminal-animation-duration")
                         .and_then(|value| value.parse::<f64>().ok())
+                        .filter(|value| value.is_finite())
                         .unwrap_or(0.2)
                         .clamp(0.0, 5.0),
                 ),

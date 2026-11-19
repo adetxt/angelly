@@ -3,6 +3,9 @@
 
 use std::time::Duration;
 
+/// A longer `resize-overlay-duration` would overflow the deadline arithmetic.
+const MAX_RESIZE_OVERLAY: Duration = Duration::from_secs(24 * 60 * 60);
+
 use angelly_core::config::{parse_bool, parse_duration, BackgroundBlur, Config, CopyOnSelect, WindowPaddingBalance};
 use terminal::{CursorStyle, OptionAsAlt, Rgb};
 
@@ -402,7 +405,8 @@ impl Settings {
             resize_overlay_duration: config
                 .get("resize-overlay-duration")
                 .and_then(parse_duration)
-                .unwrap_or(Duration::from_millis(750)),
+                .unwrap_or(Duration::from_millis(750))
+                .min(MAX_RESIZE_OVERLAY),
             notify_on_finish: match config.get("notify-on-command-finish") {
                 Some("unfocused") => NotifyOnFinish::Unfocused,
                 Some("always") => NotifyOnFinish::Always,
