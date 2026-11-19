@@ -47,6 +47,7 @@ fn main() {
     });
     app.run(|cx| {
         gpui_kit::init(cx);
+        terminal_view::register_symbols(cx);
         cx.set_global(Theme::load());
         prefs::Prefs::init(cx);
         panels::init(cx);

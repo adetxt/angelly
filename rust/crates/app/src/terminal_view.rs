@@ -46,6 +46,7 @@ use self::scroll::{RowAccumulator, ScrollerVisibility};
 use self::search::SearchState;
 use self::settings::Settings;
 pub use self::clipboard::ClipboardPrompt;
+pub use self::font::register_symbols;
 pub(crate) use self::surface::{stage as stage_surface, unstage as unstage_surface, Surface};
 
 actions!(terminal, [Copy, Paste, SelectAll]);
