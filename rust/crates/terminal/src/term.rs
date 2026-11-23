@@ -197,6 +197,18 @@ impl Term {
                 clipboard_read_pending: false,
             }));
 
+            // libghostty-vt creates terminals that do not clear the prompt on resize and
+            // offers no option to change that. The shells run here load Ghostty's
+            // integration, which redraws the prompt, so turn it on through the one
+            // channel that exists: a prompt start with `redraw=1`, then back to output.
+            // This runs before any callback is installed, so the app sees no prompt event.
+            const ENABLE_PROMPT_REDRAW: &[u8] = b"\x1b]133;A;redraw=1\x07\x1b]133;C\x07";
+            sys::ghostty_terminal_vt_write(
+                raw,
+                ENABLE_PROMPT_REDRAW.as_ptr(),
+                ENABLE_PROMPT_REDRAW.len(),
+            );
+
             let set = |opt: sys::GhosttyTerminalOption::Type, v: *const c_void| {
                 sys::ghostty_terminal_set(raw, opt as _, v);
             };
@@ -256,14 +268,6 @@ impl Term {
             set(
                 O::GHOSTTY_TERMINAL_OPT_RENDER_HOLD,
                 cb_render_hold as *const c_void,
-            );
-
-            // The shells run here load Ghostty's integration, which redraws the prompt on
-            // resize; without this the old wrapped prompt stays behind the redrawn one.
-            let redraws_prompt = true;
-            set(
-                O::GHOSTTY_TERMINAL_OPT_SHELL_REDRAWS_PROMPT,
-                &redraws_prompt as *const bool as *const c_void,
             );
 
             // Ghostty enables grapheme clustering by default; the mouse encoder

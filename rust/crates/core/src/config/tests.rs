@@ -413,7 +413,7 @@ fn include_of_a_directory_is_reported() {
 #[test]
 fn embedded_themes_match_the_bundled_resources() {
     for name in ["angelly-dark", "angelly-light"] {
-        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../resources/themes").join(match name {
+        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/themes").join(match name {
             "angelly-dark" => "Angelly Dark",
             _ => "Angelly Light",
         });

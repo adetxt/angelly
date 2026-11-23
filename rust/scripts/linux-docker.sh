@@ -44,7 +44,7 @@ case $cmd in
     docker build -t "$image" -f "$rust/packaging/linux/docker/Dockerfile" "$rust/packaging/linux/docker"
     ;;
   vt)
-    (cd "$repo" && zig build -Demit-lib-vt -Doptimize=ReleaseFast -Dtarget="$zig_target" --prefix "$out/vt")
+    (cd "$rust/third_party/ghostty" && zig build -Demit-lib-vt -Doptimize=ReleaseFast -Dtarget="$zig_target" --prefix "$out/vt")
     ;;
   build)
     [ -f "$out/vt/lib/libghostty-vt.a" ] || "$0" vt

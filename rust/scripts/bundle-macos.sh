@@ -5,7 +5,7 @@
 #   --debug               build the dev profile instead of release
 #   --universal           build arm64 and x86_64 and join them with lipo
 #   --bundle-id ID        CFBundleIdentifier (default: com.adetxt.angelly.rs)
-#   --version VERSION     CFBundleShortVersionString (default: from build.zig.zon)
+#   --version VERSION     CFBundleShortVersionString (default: from crates/app/Cargo.toml)
 #   --out DIR             output directory (default: target/bundle)
 #   --sign IDENTITY       codesign identity; "-" signs ad hoc (default)
 #   --no-build            reuse the binary already in target/
@@ -28,7 +28,7 @@ repo=$(cd "$rust/.." && pwd)
 profile=release
 universal=0
 bundle_id=com.adetxt.angelly.rs
-version=$(sed -n 's/^ *\.version = "\(.*\)",/\1/p' "$repo/build.zig.zon" | head -1 | sed 's/-dev$//')
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$rust/crates/app/Cargo.toml" | head -1)
 out="$rust/target/bundle"
 identity=-
 build=1
@@ -98,7 +98,7 @@ plutil -lint "$contents/Info.plist" >/dev/null
 cp "$rust/packaging/macos/Angelly.sdef" "$resources/Angelly.sdef"
 
 # App icon: the .iconset layout wants 16..512 at 1x and 2x.
-assets="$repo/macos/Assets.xcassets"
+assets="$rust/packaging/macos/Assets.xcassets"
 iconset=$(mktemp -d)/Angelly.iconset
 mkdir -p "$iconset"
 set_icon="$assets/Angelly.appiconset"
@@ -126,7 +126,7 @@ done
 # Shell integration and themes (the Angelly themes live in the repo; the full set
 # comes from a built app when one is available).
 mkdir -p "$resources/ghostty"
-cp -R "$repo/src/shell-integration" "$resources/ghostty/shell-integration"
+cp -R "$rust/third_party/ghostty/src/shell-integration" "$resources/ghostty/shell-integration"
 mkdir -p "$resources/ghostty/themes"
 src=${GHOSTTY_RESOURCES_SRC:-/Applications/Angelly.app/Contents/Resources}
 if [ -d "$src/ghostty/themes" ]; then
@@ -134,7 +134,7 @@ if [ -d "$src/ghostty/themes" ]; then
 else
   echo "note: no GHOSTTY_RESOURCES_SRC themes found; only the Angelly themes are bundled" >&2
 fi
-cp "$repo/resources/themes/"* "$resources/ghostty/themes/"
+cp "$rust/packaging/themes/"* "$resources/ghostty/themes/"
 if [ -d "$src/terminfo" ]; then
   cp -R "$src/terminfo" "$resources/terminfo"
 else

@@ -3,10 +3,10 @@ name: rust
 
 on:
   pull_request:
-    paths: ["rust/**", "include/**", "src/**", "build.zig", "build.zig.zon"]
+    paths: ["rust/**"]
   push:
     branches: [main]
-    paths: ["rust/**", "include/**", "src/**", "build.zig", "build.zig.zon"]
+    paths: ["rust/**"]
 
 defaults:
   run:
@@ -20,15 +20,17 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
       - name: Install Zig
         working-directory: .
-        run: scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+        run: rust/scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
       - run: cargo test --workspace
       - name: Build the bundle
-        run: scripts/bundle-macos.sh --universal --sign -
+        run: rust/scripts/bundle-macos.sh --universal --sign -
       - name: Bundle id and metadata
         run: |
           plutil -lint target/bundle/Angelly.app/Contents/Info.plist
@@ -43,9 +45,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
       - name: Install Zig
         working-directory: .
-        run: scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+        run: rust/scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
       - name: System libraries
         run: |
           sudo apt-get update
@@ -60,7 +64,7 @@ jobs:
           desktop-file-validate packaging/linux/com.adetxt.angelly.desktop
           appstreamcli validate --no-net packaging/linux/com.adetxt.angelly.metainfo.xml
       - name: Package
-        run: scripts/package-linux.sh --deb
+        run: rust/scripts/package-linux.sh --deb
       - uses: actions/upload-artifact@v4
         with:
           name: Angelly-linux
@@ -73,6 +77,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
