@@ -3,182 +3,111 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Angelly is a native macOS terminal with tab groups, Git worktrees, and workspace recovery." />
-    <meta name="theme-color" content="#eeeae0" />
-    <title>Angelly / Your terminal, with wings.</title>
-    <link rel="icon" type="image/png" href="../images/icons/icon_256.png" />
+    <meta name="description" content="A native macOS terminal with room for every project. Tab groups, Git worktrees, and workspace recovery, built on Ghostty's terminal engine." />
+    <meta name="theme-color" content="#fff6fa" />
+    <title>Angelly · Your terminal, with wings.</title>
+    <link rel="icon" type="image/png" href="assets/angelly.png" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+    <noscript><style>.ascii-caption, .icon-selector, #copy-commands { display: none; }</style></noscript>
   </head>
   <body>
-    <header class="masthead">
-      <a class="wordmark" href="#top" aria-label="Angelly, back to top">
-        <img src="../images/icons/icon_128.png" alt="" width="40" height="40" />
-        <span>ANGELLY</span>
-        <small>TERMINAL / 01</small>
-      </a>
-      <nav aria-label="Main navigation">
-        <a href="#features"><span>01</span> FIELD NOTES</a>
-        <a href="#icons"><span>02</span> ICON LAB</a>
-        <a class="nav-download" href="#install">GET ANGELLY <b aria-hidden="true">↓</b></a>
-      </nav>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="masthead" id="top">
+      <div class="nav-inner wrap">
+        <a class="wordmark" href="#top" aria-label="Angelly home">
+          <img src="assets/angelly.png" alt="" width="40" height="40" />
+          <span>angelly</span>
+        </a>
+        <details class="mobile-menu">
+          <summary>Menu</summary>
+          <nav aria-label="Mobile navigation"><a href="#features">The terminal</a><a href="#icons">Make it yours</a><a href="https://github.com/adetxt/angelly">GitHub</a></nav>
+        </details>
+        <nav aria-label="Main navigation">
+          <a class="nav-detail" href="#features">The terminal</a>
+          <a class="nav-detail" href="#icons">Make it yours</a>
+          <a class="nav-detail" href="https://github.com/adetxt/angelly">GitHub</a>
+          <a class="button button-small" href="#install">Download<span class="nav-platform">&nbsp;for macOS</span></a>
+        </nav>
+      </div>
     </header>
 
-    <main id="top">
-      <section class="hero">
-        <div class="hero-index"><span>INDEPENDENT MACOS SOFTWARE</span><span>EST. IN THE TERMINAL</span></div>
-        <div class="hero-headline">
-          <h1>YOUR<br />TERMINAL<span class="period">.</span><br /><span class="headline-accent">WITH WINGS.</span></h1>
-          <div class="hero-copy">
-            <p class="copy-label">A SHELL WITH ROOM TO MOVE</p>
-            <p>Tabs turn into projects. Projects keep their place. And when the window closes, your work can find its way back.</p>
-            <div class="hero-links">
-              <a class="download-link" href="#install">DOWNLOAD ANGELLY <span aria-hidden="true">↓</span></a>
-              <a class="source-link" href="https://github.com/adetxt/angelly">SOURCE CODE <span aria-hidden="true">↗</span></a>
-            </div>
-            <p class="compatibility"><span class="status-light"></span> macOS 14+ &nbsp; / &nbsp; FREE &amp; OPEN SOURCE</p>
+    <main id="main" tabindex="-1">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">A little lift for your command line</p>
+          <h1 id="hero-title">Your terminal,<br /><span>with wings.</span></h1>
+          <p class="hero-description">A native terminal with room for every project. Keep your tabs together, your branches close, and your place when you come back.</p>
+          <div class="hero-actions">
+            <a class="button" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.05 12.54c.02 2.15 1.89 2.87 1.91 2.88-.02.05-.3 1.03-.98 2.04-.59.87-1.2 1.73-2.16 1.75-.94.02-1.25-.57-2.33-.57s-1.42.55-2.31.59c-.93.03-1.64-.94-2.24-1.8-1.22-1.77-2.15-5.01-.9-7.2.62-1.09 1.72-1.78 2.91-1.8.91-.02 1.78.61 2.33.61.54 0 1.56-.75 2.63-.64.45.02 1.72.18 2.53 1.38-.06.04-1.51.88-1.49 2.76ZM15.33 6.9c.48-.58.8-1.38.71-2.18-.69.03-1.52.46-2.01 1.04-.44.51-.83 1.32-.73 2.1.77.06 1.55-.39 2.03-.96Z"/></svg>Download Angelly</a>
+            <a class="text-link" href="https://github.com/adetxt/angelly">View source</a>
           </div>
+          <p class="compatibility">macOS 14+ <span aria-hidden="true">/</span> Free &amp; open source</p>
         </div>
-
-        <figure class="product-figure">
-          <div class="figure-label figure-label-left"><span>SCREEN / 001</span><span>PROJECTS IN VIEW</span></div>
-          <div class="screen-mat">
-            <div class="screen-topline"><span>ANGELLY.app</span><span>ACTIVE WORKSPACE&nbsp; · &nbsp;04</span><span>⌘ K</span></div>
-            <img src="../assets/angelly.webp" alt="Angelly terminal with project groups in the sidebar and a coding session open" width="2500" height="1500" />
+        <figure class="ascii-art" aria-label="Angelly's wing and terminal prompt">
+          <div class="ascii-stage">
+            <img class="wing-fallback" src="assets/official.png" alt="" width="256" height="256" />
+            <canvas id="ascii-wing" width="640" height="600" aria-hidden="true"></canvas>
           </div>
-          <figcaption><span>01—04</span><span>One sidebar. All the open threads.</span><span>FIG. A</span></figcaption>
-          <div class="figure-side-note" aria-hidden="true">STAY<br />IN<br />FLOW<span>↘</span></div>
+          <figcaption class="ascii-caption"><span>Made of characters. Full of character.</span><button id="motion-toggle" type="button" hidden>Pause animation</button></figcaption>
         </figure>
-        <div class="hero-bottomline"><span>BUILT ON GHOSTTY'S ZIG TERMINAL ENGINE</span><span>SCROLL TO EXPLORE&nbsp; ↓</span><span>NO. 0001</span></div>
       </section>
 
-      <section class="features" id="features">
-        <div class="section-rail"><span>FIELD NOTES</span><span>01 — 03</span></div>
-        <div class="features-intro">
-          <p class="section-kicker">THE SMALL THINGS THAT CHANGE YOUR DAY</p>
-          <h2>Less tab<br />archaeology.<br /><span>More doing.</span></h2>
-          <p class="intro-note">A few useful ideas, kept close to the command line.</p>
+      <section class="product-section wrap" id="features" aria-labelledby="product-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">A home for your open threads</p><h2 id="product-title">Find your place.<br />Stay in your flow.</h2></div>
+          <p>From the first shell to the last open tab,<br class="desktop-break" /> a little less getting in your own way.</p>
         </div>
-        <div class="feature-rows">
-          <article class="feature-row">
-            <span class="row-number">01</span>
-            <div><h3>Give each project a place.</h3><p>Group tabs, add a color, and get back to the right context without hunting through a row of windows.</p></div>
-            <span class="row-glyph glyph-tabs" aria-hidden="true"><i></i><i></i><i></i></span>
-          </article>
-          <article class="feature-row">
-            <span class="row-number">02</span>
-            <div><h3>Take Git work with you.</h3><p>Create, open, and remove worktrees from either tab layout. Branch context stays where the work is.</p></div>
-            <span class="row-glyph glyph-branch" aria-hidden="true">⑂</span>
-          </article>
-          <article class="feature-row">
-            <span class="row-number">03</span>
-            <div><h3>Pick up where you left off.</h3><p>Recover recently closed windows, including after restarting Angelly. Detours happen.</p></div>
-            <span class="row-glyph glyph-return" aria-hidden="true">↶</span>
-          </article>
+        <figure class="product-shot">
+          <img src="assets/angelly.webp" alt="Angelly running a coding session, with project groups, Git branch status, and workspace tabs in the sidebar" width="2500" height="1500" loading="lazy" />
+          <figcaption><span>Your projects, in good company.</span><span>Angelly on macOS</span></figcaption>
+        </figure>
+        <div class="feature-list">
+          <article><svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M6 6.5h2m3 0h2"/></svg><h3>Tabs with a sense of place.</h3><p>Group tabs by project, add a color, and find the right context in your sidebar.</p></article>
+          <article><svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="5" r="2.5"/><circle cx="17" cy="6" r="2.5"/><circle cx="7" cy="19" r="2.5"/><path d="M7 7.5v9M17 8.5a7 7 0 0 1-7 7H7"/></svg><h3>A branch of your own.</h3><p>Create, open, and remove Git worktrees without stepping out of the terminal.</p></article>
+          <article><svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1.5 8M4 4v6h6m2-3v5l3 2"/></svg><h3>Welcome back to your work.</h3><p>Recover recently closed windows, even after restarting. Your next session has a starting point.</p></article>
         </div>
       </section>
 
-      <section class="icon-lab" id="icons">
-        <div class="section-rail"><span>ICON LAB</span><span>02 — 10 STYLES</span></div>
-        <div class="icon-lab-copy">
-          <p class="section-kicker">SAME TERMINAL. DIFFERENT WINGS.</p>
-          <h2>Pick your<br /><span>flight mark.</span></h2>
-          <p>Ten alternate app icons, made for the macOS Dock. Choose a style to see it up close.</p>
+      <section class="engine-section" aria-labelledby="engine-title">
+        <div class="engine-inner wrap">
+          <p class="eyebrow">Familiar at the core</p>
+          <h2 id="engine-title">Ghostty inside.<br /><span>Angelly all around.</span></h2>
+          <div class="engine-copy"><p>Ghostty's terminal engine, a Rust frontend, and a workspace that feels like yours. Built for the way you move between projects.</p><a class="text-link" href="https://github.com/adetxt/angelly#build">Read the build notes</a></div>
+          <div class="engine-signature" aria-hidden="true">&gt;_</div>
         </div>
+      </section>
+
+      <section class="icon-section wrap" id="icons" aria-labelledby="icons-title">
+        <div class="icon-copy"><p class="eyebrow">A personal touch</p><h2 id="icons-title">Same terminal.<br /><span>Different wings.</span></h2><p>A soft spot for lilac? A thing for blueprints? Find a familiar face for your Dock. More styles are waiting in the app.</p></div>
         <div class="icon-console">
-          <div class="icon-preview">
-            <div class="preview-registration" aria-hidden="true">+</div>
-            <img id="active-icon" src="../rust/crates/app/assets/icons/official.png" alt="Official Angelly app icon" width="256" height="256" />
-            <div class="preview-caption"><span>ACTIVE STYLE</span><b id="active-icon-name">OFFICIAL</b></div>
+          <div class="icon-preview"><img id="active-icon" src="assets/official.png" alt="Official Angelly app icon" width="256" height="256" loading="lazy" /><p id="active-icon-name" aria-live="polite">Official</p></div>
+          <div class="icon-selector" role="group" aria-label="Preview an Angelly app icon">
+            <button class="icon-choice" type="button" aria-pressed="true" data-name="Official" data-src="assets/official.png"><img src="assets/official.png" alt="" width="48" height="48" loading="lazy" /><span>Official</span></button>
+            <button class="icon-choice" type="button" aria-pressed="false" data-name="Blueprint" data-src="assets/blueprint.png"><img src="assets/blueprint.png" alt="" width="48" height="48" loading="lazy" /><span>Blueprint</span></button>
+            <button class="icon-choice" type="button" aria-pressed="false" data-name="Chalkboard" data-src="assets/chalkboard.png"><img src="assets/chalkboard.png" alt="" width="48" height="48" loading="lazy" /><span>Chalkboard</span></button>
+            <button class="icon-choice" type="button" aria-pressed="false" data-name="Retro" data-src="assets/retro.png"><img src="assets/retro.png" alt="" width="48" height="48" loading="lazy" /><span>Retro</span></button>
+            <button class="icon-choice" type="button" aria-pressed="false" data-name="Holographic" data-src="assets/holographic.png"><img src="assets/holographic.png" alt="" width="48" height="48" loading="lazy" /><span>Holographic</span></button>
+            <button class="icon-choice" type="button" aria-pressed="false" data-name="X-ray" data-src="assets/xray.png"><img src="assets/xray.png" alt="" width="48" height="48" loading="lazy" /><span>X-ray</span></button>
           </div>
-          <div class="icon-selector" role="group" aria-label="Choose an Angelly app icon">
-            <button class="icon-choice is-active" type="button" aria-pressed="true" data-name="Official" data-src="../rust/crates/app/assets/icons/official.png"><img src="../rust/crates/app/assets/icons/official.png" alt="" /><span>OFFICIAL</span></button>
-            <button class="icon-choice" type="button" aria-pressed="false" data-name="Blueprint" data-src="../rust/crates/app/assets/icons/blueprint.png"><img src="../rust/crates/app/assets/icons/blueprint.png" alt="" /><span>BLUEPRINT</span></button>
-            <button class="icon-choice" type="button" aria-pressed="false" data-name="Chalkboard" data-src="../rust/crates/app/assets/icons/chalkboard.png"><img src="../rust/crates/app/assets/icons/chalkboard.png" alt="" /><span>CHALKBOARD</span></button>
-            <button class="icon-choice" type="button" aria-pressed="false" data-name="Retro" data-src="../rust/crates/app/assets/icons/retro.png"><img src="../rust/crates/app/assets/icons/retro.png" alt="" /><span>RETRO</span></button>
-            <button class="icon-choice" type="button" aria-pressed="false" data-name="Holographic" data-src="../rust/crates/app/assets/icons/holographic.png"><img src="../rust/crates/app/assets/icons/holographic.png" alt="" /><span>HOLOGRAPHIC</span></button>
-            <button class="icon-choice" type="button" aria-pressed="false" data-name="X-ray" data-src="../rust/crates/app/assets/icons/xray.png"><img src="../rust/crates/app/assets/icons/xray.png" alt="" /><span>X-RAY</span></button>
-          </div>
-          <p class="icon-lab-footnote"><span>6 / 10</span> ALSO IN THE SET: GLASS · MICROCHIP · PAPER · EGYPTIAN</p>
         </div>
       </section>
 
-      <section class="install" id="install">
-        <div class="install-topline"><span>03 / INSTALLATION</span><span>TAKES ABOUT A MINUTE</span></div>
-        <div class="install-title"><h2>READY WHEN<br />YOU ARE<span>.</span></h2><p>Angelly is free. Choose your route.</p></div>
-        <div class="install-methods">
-          <div class="method method-brew">
-            <div class="method-heading"><span>A</span><h3>HOMEBREW</h3><small>FOR THE COMMAND LINE</small></div>
-            <div class="terminal-block"><div class="terminal-title"><span><i></i><i></i><i></i></span><span>INSTALL / CASK</span><button class="copy-button" type="button" aria-label="Copy Homebrew install commands">COPY</button></div><pre><code>brew tap adetxt/angelly https://github.com/adetxt/angelly
-brew install --cask adetxt/angelly/angelly</code></pre></div>
-          </div>
-          <div class="method method-dmg">
-            <div class="method-heading"><span>B</span><h3>macOS</h3><small>UNIVERSAL · APPLE SILICON + INTEL</small></div>
-            <a class="dmg-arrow" id="macos-download" href="https://github.com/adetxt/angelly/releases/latest" aria-label="Download the latest Angelly macOS disk image">
-              <svg class="macos-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.05 12.54c.02 2.15 1.89 2.87 1.91 2.88-.02.05-.3 1.03-.98 2.04-.59.87-1.2 1.73-2.16 1.75-.94.02-1.25-.57-2.33-.57s-1.42.55-2.31.59c-.93.03-1.64-.94-2.24-1.8-1.22-1.77-2.15-5.01-.9-7.2.62-1.09 1.72-1.78 2.91-1.8.91-.02 1.78.61 2.33.61.54 0 1.56-.75 2.63-.64.45.02 1.72.18 2.53 1.38-.06.04-1.51.88-1.49 2.76ZM15.33 6.9c.48-.58.8-1.38.71-2.18-.69.03-1.52.46-2.01 1.04-.44.51-.83 1.32-.73 2.1.77.06 1.55-.39 2.03-.96Z"/></svg>
-              <span>DOWNLOAD FOR macOS <small>Latest universal DMG</small></span><b aria-hidden="true">↓</b>
-            </a>
-            <a class="other-releases" href="https://github.com/adetxt/angelly/releases">Other versions &amp; release notes <span aria-hidden="true">↗</span></a>
+      <section class="install-section" id="install" aria-labelledby="install-title">
+        <div class="install-inner wrap">
+          <div class="install-copy"><img src="assets/angelly.png" alt="" width="64" height="64" loading="lazy" /><p class="eyebrow">Give your terminal wings</p><h2 id="install-title">Make yourself<br />at home.</h2><p>Free, open source, and ready for your next project.</p></div>
+          <div class="install-options">
+            <a class="button" id="macos-download" href="https://github.com/adetxt/angelly/releases/latest">Download for macOS</a>
+            <p class="download-meta">Universal DMG · Apple Silicon &amp; Intel · macOS 14+</p>
+            <p class="download-status" id="download-status" role="status"></p>
+            <div class="brew-install"><div class="brew-heading"><span>Or install with Homebrew</span><button id="copy-commands" type="button">Copy commands</button></div><pre id="install-commands"><code>brew tap adetxt/angelly https://github.com/adetxt/angelly
+brew install --cask adetxt/angelly/angelly</code></pre><p class="copy-status" id="copy-status" role="status"></p></div>
+            <a class="text-link release-link" href="https://github.com/adetxt/angelly/releases">All releases &amp; release notes</a>
           </div>
         </div>
-        <p class="install-foot">REQUIRES macOS 14 OR LATER <span>·</span> UNIVERSAL BUILD FOR APPLE SILICON + INTEL</p>
       </section>
     </main>
 
-    <footer class="footer">
-      <a class="footer-mark" href="#top"><img src="../images/icons/icon_32.png" alt="" width="28" height="28" /><span>ANGELLY</span></a>
-      <span>YOUR TERMINAL, WITH WINGS.</span>
-      <a href="https://github.com/adetxt/angelly">GITHUB ↗</a>
-      <span>MIT / OPEN SOURCE</span>
-      <a class="back-top" href="#top">BACK TO TOP ↑</a>
-    </footer>
-
-    <script>
-      const activeIcon = document.querySelector("#active-icon");
-      const activeIconName = document.querySelector("#active-icon-name");
-      const iconChoices = document.querySelectorAll(".icon-choice");
-
-      iconChoices.forEach((choice) => {
-        choice.addEventListener("click", () => {
-          activeIcon.src = choice.dataset.src;
-          activeIcon.alt = `${choice.dataset.name} Angelly app icon`;
-          activeIconName.textContent = choice.dataset.name.toUpperCase();
-          iconChoices.forEach((item) => {
-            const selected = item === choice;
-            item.classList.toggle("is-active", selected);
-            item.setAttribute("aria-pressed", String(selected));
-          });
-        });
-      });
-
-      const copyButton = document.querySelector(".copy-button");
-      const installCommands = "brew tap adetxt/angelly https://github.com/adetxt/angelly\nbrew install --cask adetxt/angelly/angelly";
-      copyButton.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(installCommands);
-          copyButton.textContent = "COPIED";
-          window.setTimeout(() => (copyButton.textContent = "COPY"), 1400);
-        } catch {
-          copyButton.textContent = "SELECT COMMANDS";
-          window.setTimeout(() => (copyButton.textContent = "COPY"), 1800);
-        }
-      });
-
-      document.querySelector("#macos-download").addEventListener("click", async (event) => {
-        event.preventDefault();
-        const fallback = event.currentTarget.href;
-        try {
-          const response = await fetch("https://api.github.com/repos/adetxt/angelly/releases/latest", {
-            headers: { Accept: "application/vnd.github+json" },
-          });
-          if (!response.ok) throw new Error("Could not look up the latest release");
-          const release = await response.json();
-          const dmg = release.assets.find((asset) => /^Angelly-.+\.dmg$/i.test(asset.name));
-          if (!dmg) throw new Error("No macOS DMG was found in the latest release");
-          window.location.assign(dmg.browser_download_url);
-        } catch {
-          window.location.assign(fallback);
-        }
-      });
-    </script>
+    <footer class="footer wrap"><a class="wordmark" href="#top"><img src="assets/angelly.png" alt="" width="32" height="32" /><span>angelly</span></a><p>Your terminal, with wings.</p><div><a href="https://github.com/adetxt/angelly">GitHub</a><a href="https://github.com/adetxt/angelly/blob/main/LICENSE">MIT license</a><a href="#top">Back to top</a></div></footer>
   </body>
 </html>
