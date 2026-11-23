@@ -53,5 +53,3 @@ rust/scripts/cross-check.sh windows
 The Linux check passes. It type-checks only: no binary is linked or run. See the script
 header for what it substitutes (zig as the C toolchain, an empty `libghostty-vt.a`, a
 stub resource compiler).
-
-CI drafts live in `.github-draft/workflows/`.
