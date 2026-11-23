@@ -1,0 +1,3 @@
+[submodule "rust/third_party/ghostty"]
+	path = rust/third_party/ghostty
+	url = https://github.com/ghostty-org/ghostty

@@ -152,7 +152,7 @@ mod imp {
 
         fn variant_image(name: &str) -> Retained<NSImage> {
             let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("../../../macos/Assets.xcassets/Alternate Icons/{name}Image.imageset/macOS-AppIcon-1024px.png"));
+                .join(format!("../../packaging/macos/Assets.xcassets/Alternate Icons/{name}Image.imageset/macOS-AppIcon-1024px.png"));
             NSImage::initWithContentsOfFile(NSImage::alloc(), &NSString::from_str(source.to_str().unwrap())).unwrap()
         }
 

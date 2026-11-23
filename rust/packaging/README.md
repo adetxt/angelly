@@ -2,7 +2,7 @@
 
 ## macOS
 
-`scripts/bundle-macos.sh` builds `Angelly.app` (Info.plist, entitlements, scripting
+`rust/scripts/bundle-macos.sh` builds `Angelly.app` (Info.plist, entitlements, scripting
 definition, App Intents metadata, themes, shell integration, terminfo) and signs it.
 `--universal` joins arm64 and x86_64 builds with `lipo`. The development bundle id is
 `com.adetxt.angelly.rs`; pass `--bundle-id com.adetxt.angelly` for a release.
@@ -11,17 +11,17 @@ To build runtime resources from this checkout rather than copy them from an
 installed app, run these commands from the repository root:
 
 ```sh
-zig build resources -Doptimize=ReleaseFast --prefix "$PWD/zig-out"
-GHOSTTY_RESOURCES_SRC="$PWD/zig-out/share" rust/scripts/bundle-macos.sh --universal --bundle-id com.adetxt.angelly
+(cd rust/third_party/ghostty && zig build resources -Doptimize=ReleaseFast --prefix "$PWD/zig-out")
+GHOSTTY_RESOURCES_SRC="$PWD/rust/third_party/ghostty/zig-out/share" rust/scripts/bundle-macos.sh --universal --bundle-id com.adetxt.angelly
 ```
 
-Tag releases use this Rust bundle, then `scripts/sign-and-notarize.sh` signs,
+Tag releases use this Rust bundle, then `rust/scripts/sign-and-notarize.sh` signs,
 notarizes, and packages it. Signed Sparkle appcasts remain available for users
 upgrading from the retired Swift frontend.
 
 ## Linux
 
-`scripts/package-linux.sh` stages an FHS tree and can wrap it as a `.deb` (`--deb`,
+`rust/scripts/package-linux.sh` stages an FHS tree and can wrap it as a `.deb` (`--deb`,
 needs `dpkg-deb`) or an AppImage (`--appimage`, needs `appimagetool`). Resources live in
 `<prefix>/share/angelly`, which the executable finds relative to `bin/`.
 
@@ -46,12 +46,10 @@ the Unix-only `process_group_leader`; the platform layer has not been compiled f
 
 ```
 rustup target add x86_64-unknown-linux-gnu x86_64-pc-windows-gnu
-scripts/cross-check.sh linux
-scripts/cross-check.sh windows
+rust/scripts/cross-check.sh linux
+rust/scripts/cross-check.sh windows
 ```
 
 The Linux check passes. It type-checks only: no binary is linked or run. See the script
 header for what it substitutes (zig as the C toolchain, an empty `libghostty-vt.a`, a
 stub resource compiler).
-
-CI drafts live in `.github-draft/workflows/`.

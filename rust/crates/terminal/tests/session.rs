@@ -136,7 +136,7 @@ fn zsh_integration_reports_prompts_and_the_working_directory() {
         command: Some(vec![zsh.to_string_lossy().into_owned(), "-i".into()]),
         cwd: Some(home.path().to_path_buf()),
         env: vec![("HOME".into(), home.path().to_string_lossy().into_owned())],
-        resources_dir: Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../src"))),
+        resources_dir: Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../third_party/ghostty/src"))),
         ..SessionConfig::default()
     };
     let s = Session::spawn(cfg, || {}).unwrap();

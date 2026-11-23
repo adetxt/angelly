@@ -1,7 +1,7 @@
 name: Release
 
 # Pushing a tag like v0.1.0 builds Angelly.app and publishes it as a DMG on the
-# matching GitHub release. The tag must match `.version` in build.zig.zon.
+# matching GitHub release. The tag must match `version` in rust/crates/app/Cargo.toml.
 on:
   push:
     tags: ["v*"]
@@ -16,13 +16,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          submodules: true
 
       # mlugg/setup-zig still runs on the deprecated Node 20, so install Zig
       # with a script that verifies the download the same way.
       - name: Install Zig
         run: |
           brew install minisign
-          scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          rust/scripts/install-zig.sh 0.17.0 "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
 
       - name: Install Metal toolchain
         run: xcodebuild -downloadComponent MetalToolchain
@@ -41,7 +42,7 @@ jobs:
 
       - name: Build
         run: |
-          zig build resources -Doptimize=ReleaseFast --prefix "$RUNNER_TEMP/angelly-resources"
+          (cd rust/third_party/ghostty && zig build resources -Doptimize=ReleaseFast --prefix "$RUNNER_TEMP/angelly-resources")
           GHOSTTY_RESOURCES_SRC="$RUNNER_TEMP/angelly-resources/share" \
             rust/scripts/bundle-macos.sh --universal --bundle-id com.adetxt.angelly
 
@@ -49,7 +50,7 @@ jobs:
         run: |
           built=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' rust/target/bundle/Angelly.app/Contents/Info.plist)
           if [ "v$built" != "$GITHUB_REF_NAME" ]; then
-            echo "tag $GITHUB_REF_NAME does not match app version $built (bump .version in build.zig.zon)" >&2
+            echo "tag $GITHUB_REF_NAME does not match app version $built (bump version in rust/crates/app/Cargo.toml)" >&2
             exit 1
           fi
 
@@ -87,7 +88,7 @@ jobs:
 
       - name: Sign, notarize and package DMG
         run: |
-          dmg=$(scripts/sign-and-notarize.sh)
+          dmg=$(rust/scripts/sign-and-notarize.sh)
           # Record the bare filename so `shasum -c` works next to the download.
           (cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")") > "$dmg.sha256"
           echo "DMG=$dmg" >> "$GITHUB_ENV"

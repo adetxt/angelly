@@ -11,7 +11,7 @@ use super::settings::{Adjust, Adjustments, Settings};
 /// with it directly: an embedded font is invisible to the OS fallback list, so
 /// it cannot be listed as a fallback of the configured family.
 const SYMBOLS_FAMILY: &str = "JetBrainsMono Nerd Font";
-const SYMBOLS_FONT: &[u8] = include_bytes!("../../../../../src/font/res/JetBrainsMonoNerdFont-Regular.ttf");
+const SYMBOLS_FONT: &[u8] = include_bytes!("../../../../third_party/ghostty/src/font/res/JetBrainsMonoNerdFont-Regular.ttf");
 
 /// Whether `ch` is a Nerd Font icon (the Private Use Area blocks the patched fonts use).
 pub fn is_symbol(ch: char) -> bool {
