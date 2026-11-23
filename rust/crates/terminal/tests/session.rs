@@ -136,7 +136,7 @@ fn zsh_integration_reports_prompts_and_the_working_directory() {
         command: Some(vec![zsh.to_string_lossy().into_owned(), "-i".into()]),
         cwd: Some(home.path().to_path_buf()),
         env: vec![("HOME".into(), home.path().to_string_lossy().into_owned())],
-        resources_dir: Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../src"))),
+        resources_dir: Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../third_party/ghostty/src"))),
         ..SessionConfig::default()
     };
     let s = Session::spawn(cfg, || {}).unwrap();
@@ -274,4 +274,19 @@ fn wake_is_coalesced_until_term_is_locked() {
     );
     drop(s.term());
     s.write(b"");
+}
+
+#[test]
+fn a_missing_command_falls_back_to_a_shell_and_says_why() {
+    let config = SessionConfig {
+        command: Some(vec!["/nonexistent/angelly-test-program".into()]),
+        cwd: Some(PathBuf::from("/")),
+        ..SessionConfig::default()
+    };
+    assert!(Session::spawn(config.clone(), || {}).is_err());
+    let s = Session::spawn_or_fallback(config, || {}).unwrap();
+    wait_for("the notice", || screen(&s).contains("could not start"));
+    let text = screen(&s);
+    assert!(text.contains("/nonexistent/angelly-test-program"), "{text}");
+    assert!(s.exit_status().is_none());
 }

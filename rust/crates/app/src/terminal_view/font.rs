@@ -1,10 +1,29 @@
 //! Font selection and the cell grid metrics derived from it.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use gpui_kit::*;
 
 use super::settings::{Adjust, Adjustments, Settings};
+
+/// Ghostty's bundled Nerd Font. Icon glyphs in the Private Use Area are drawn
+/// with it directly: an embedded font is invisible to the OS fallback list, so
+/// it cannot be listed as a fallback of the configured family.
+const SYMBOLS_FAMILY: &str = "JetBrainsMono Nerd Font";
+const SYMBOLS_FONT: &[u8] = include_bytes!("../../../../third_party/ghostty/src/font/res/JetBrainsMonoNerdFont-Regular.ttf");
+
+/// Whether `ch` is a Nerd Font icon (the Private Use Area blocks the patched fonts use).
+pub fn is_symbol(ch: char) -> bool {
+    matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD)
+}
+
+/// Makes the symbols font available to the text system.
+pub fn register_symbols(cx: &App) {
+    if let Err(err) = cx.text_system().add_fonts(vec![Cow::Borrowed(SYMBOLS_FONT)]) {
+        eprintln!("angelly: could not load the symbols font: {err}");
+    }
+}
 
 /// The four faces text can be drawn in.
 #[derive(Clone)]
@@ -13,6 +32,8 @@ pub struct FontSet {
     pub bold: Font,
     pub italic: Font,
     pub bold_italic: Font,
+    /// Face for [`is_symbol`] cells, whatever the configured family.
+    pub symbols: Font,
 }
 
 impl FontSet {
@@ -30,6 +51,7 @@ impl FontSet {
             bold: face(Some("font-family-bold"), FontWeight::BOLD, FontStyle::Normal),
             italic: face(Some("font-family-italic"), FontWeight::NORMAL, FontStyle::Italic),
             bold_italic: face(Some("font-family-bold-italic"), FontWeight::BOLD, FontStyle::Italic),
+            symbols: font(SYMBOLS_FAMILY),
         }
     }
 
@@ -213,6 +235,15 @@ mod tests {
             cursor_thickness: 1.0,
             cursor_height: 20.0,
         }
+    }
+
+    #[test]
+    fn nerd_font_icons_are_symbols_and_text_is_not() {
+        assert!(is_symbol('\u{f002}'));
+        assert!(is_symbol('\u{f0208}'));
+        assert!(!is_symbol('a'));
+        assert!(!is_symbol('é'));
+        assert!(!is_symbol('\u{10eeee}'));
     }
 
     #[test]

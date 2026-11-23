@@ -1,43 +1,13 @@
-*~
-.*.swp
-.swp
-*.log
 .DS_Store
 .vscode/
-.direnv/
-.envrc.local
-.flatpak-builder/
-zig-cache/
-.zig-cache/
-zig-pkg/
-zig-out/
-build-cmake/
-CMakeCache.txt
-CMakeFiles/
-build.zig.zon.bak
-/result*
-/.nixos-test-history
-example/*.wasm
-test/ghostty
-test/cases/**/*.actual.png
-flatpak/builddir/
-flatpak/repo/
+*.log
 
-glad.zip
-/Box_test.ppm
-/Box_test_diff.ppm
-/ghostty.qcow2
-
-vgcore.*
-
-/sprite_face_test*
-/docs/superpowers/
-
-# Rust build output (including migration prototypes).
+# Rust build output
 target/
 *.rs.bk
 
-# Local agent state and migration experiments.
+# Local agent state and experiments
 /.claude/
 /.superpowers/
 /work/
+/docs/superpowers/

@@ -6,7 +6,14 @@ use std::{
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let repo = manifest.join("../../..").canonicalize().unwrap();
+    // libghostty-vt comes from upstream Ghostty, pinned as a git submodule. Angelly
+    // carries no Zig source of its own.
+    let repo = manifest.join("../../third_party/ghostty");
+    assert!(
+        repo.join("build.zig").exists(),
+        "Ghostty source missing; run `git submodule update --init --depth 1`"
+    );
+    let repo = repo.canonicalize().unwrap();
     let include = repo.join("include");
 
     println!("cargo:rerun-if-env-changed=GHOSTTY_VT_PREFIX");

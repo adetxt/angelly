@@ -19,6 +19,7 @@ use crate::{
     types::{Colors, OptionAsAlt},
 };
 
+#[derive(Clone)]
 pub struct SessionConfig {
     pub cols: u16,
     pub rows: u16,
@@ -115,6 +116,42 @@ pub struct Session {
 }
 
 impl Session {
+    /// Like [`Session::spawn`], but a command that cannot start (missing program, bad
+    /// `$SHELL`) falls back to the default shell and then `/bin/sh`, and says so in the
+    /// terminal. Fails only when the PTY itself cannot be created.
+    pub fn spawn_or_fallback(
+        config: SessionConfig,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> io::Result<Session> {
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let attempt = |config: SessionConfig| {
+            let wake = wake.clone();
+            Session::spawn(config, move || wake())
+        };
+        let requested = config.command.clone();
+        let program = requested.clone().unwrap_or_else(default_shell).join(" ");
+        let failure = match attempt(config.clone()) {
+            Ok(session) => return Ok(session),
+            Err(error) => error,
+        };
+        let mut fallbacks = Vec::new();
+        if requested.is_some() {
+            fallbacks.push(None);
+        }
+        #[cfg(unix)]
+        fallbacks.push(Some(vec!["/bin/sh".to_string()]));
+        for command in fallbacks {
+            let started = command.clone().unwrap_or_else(default_shell).join(" ");
+            let Ok(session) = attempt(SessionConfig { command, ..config.clone() }) else { continue };
+            let notice = format!(
+                "\x1b[91m\x1b[1mAngelly could not start `{program}`:\x1b[0m {failure}\r\nStarted `{started}` instead.\r\n\r\n"
+            );
+            session.term().write(notice.as_bytes());
+            return Ok(session);
+        }
+        Err(io::Error::new(failure.kind(), format!("could not start `{program}` or a fallback shell: {failure}")))
+    }
+
     pub fn spawn(
         config: SessionConfig,
         wake: impl Fn() + Send + Sync + 'static,
@@ -141,7 +178,9 @@ impl Session {
                 exe_dir: exe_dir.as_deref(),
                 term_program_version: config.term_program_version.as_deref(),
             },
-            std::env::vars().collect(),
+            std::env::vars_os()
+                .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+                .collect(),
         );
         let (program, args) = launch
             .argv

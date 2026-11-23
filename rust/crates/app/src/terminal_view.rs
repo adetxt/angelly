@@ -46,6 +46,7 @@ use self::scroll::{RowAccumulator, ScrollerVisibility};
 use self::search::SearchState;
 use self::settings::Settings;
 pub use self::clipboard::ClipboardPrompt;
+pub use self::font::register_symbols;
 pub(crate) use self::surface::{stage as stage_surface, unstage as unstage_surface, Surface};
 
 actions!(terminal, [Copy, Paste, SelectAll]);
@@ -174,10 +175,10 @@ impl TerminalView {
         let launch = surface::launch(&theme.config, &settings, staged, &surface::Environment::current());
         let session_config = SessionConfig { colors: Some(theme.colors.clone()), ..launch.session };
         let font_size = launch.font_size;
-        let session = Session::spawn(session_config, move || {
+        let session = Session::spawn_or_fallback(session_config, move || {
             let _ = tx.try_send(());
         })
-        .expect("spawn shell");
+        .expect("open a pty");
         if !launch.initial_input.is_empty() {
             session.write(&launch.initial_input);
         }

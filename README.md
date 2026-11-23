@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly wing and terminal prompt icon" width="128">
+  <img src="rust/packaging/macos/Assets.xcassets/Angelly.appiconset/icon_256.png" alt="Angelly wing and terminal prompt icon" width="128">
 </p>
 
 <h1 align="center">Angelly</h1>
@@ -7,13 +7,17 @@
 <p align="center">
   Your terminal, with wings.
   <br />
-  A personal macOS fork of <a href="https://ghostty.org">Ghostty</a>.
+  A terminal built on <a href="https://ghostty.org">Ghostty</a>'s terminal engine.
   <br />
   <a href="https://angelly.web.app">Visit the Angelly website ↗</a>
 </p>
 
-Angelly is a native terminal with a Rust frontend built with GPUI and Ghostty's
-Zig terminal library. The Rust workspace lives in `rust/`.
+Angelly is a native terminal with a Rust frontend built with GPUI. Terminal emulation
+comes from libghostty-vt, built from an unmodified, pinned copy of Ghostty
+(`rust/third_party/ghostty`). The Rust workspace lives in `rust/`.
+
+To build: `git submodule update --init --depth 1`, install Zig 0.17, then
+`cd rust && cargo build -p angelly`.
 
 Angelly's wing and terminal prompt icon comes in ten styles: Official, Blueprint,
 Chalkboard, Microchip, Glass, Holographic, Paper, Egyptian, Retro, and X-ray.

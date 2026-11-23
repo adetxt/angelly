@@ -413,7 +413,7 @@ fn include_of_a_directory_is_reported() {
 #[test]
 fn embedded_themes_match_the_bundled_resources() {
     for name in ["angelly-dark", "angelly-light"] {
-        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../resources/themes").join(match name {
+        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/themes").join(match name {
             "angelly-dark" => "Angelly Dark",
             _ => "Angelly Light",
         });
@@ -428,4 +428,14 @@ fn embedded_themes_match_the_bundled_resources() {
 fn every_known_key_is_unique_and_sorted() {
     let keys = known_keys::KNOWN_KEYS;
     assert!(keys.windows(2).all(|w| w[0] < w[1]));
+}
+
+#[test]
+fn font_size_stays_within_a_usable_range() {
+    assert_eq!(parse("font-size = 0\n").font_size(), 1.0);
+    assert_eq!(parse("font-size = -4\n").font_size(), 1.0);
+    assert_eq!(parse("font-size = 100000\n").font_size(), 512.0);
+    assert_eq!(parse("font-size = nan\n").font_size(), 13.0);
+    assert_eq!(parse("font-size = inf\n").font_size(), 13.0);
+    assert_eq!(parse("font-size = 14.5\n").font_size(), 14.5);
 }

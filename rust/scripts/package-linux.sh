@@ -3,7 +3,7 @@
 #
 # Usage: scripts/package-linux.sh [options]
 #   --out DIR       staging root (default: target/linux/root); the tree is DIR/usr/...
-#   --version V     package version (default: from build.zig.zon)
+#   --version V     package version (default: from crates/app/Cargo.toml)
 #   --binary PATH   install this executable instead of building one
 #   --deb           also write target/linux/angelly_<version>_<arch>.deb (needs dpkg-deb)
 #   --appimage      also write target/linux/Angelly-<arch>.AppImage (needs appimagetool)
@@ -18,7 +18,7 @@ rust=$(cd "$here/.." && pwd)
 repo=$(cd "$rust/.." && pwd)
 
 out="$rust/target/linux/root"
-version=$(sed -n 's/^ *\.version = "\(.*\)",/\1/p' "$repo/build.zig.zon" | head -1 | sed 's/-dev$//')
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$rust/crates/app/Cargo.toml" | head -1)
 binary=
 deb=0
 appimage=0
@@ -56,14 +56,14 @@ put 644 "$here/../packaging/linux/$id.metainfo.xml" "$usr/share/metainfo/$id.met
 
 # The macOS asset catalog holds the app icon at every size hicolor wants.
 for size in 16 32 64 128 256 512; do
-  put 644 "$repo/macos/Assets.xcassets/Angelly.appiconset/icon_$size.png" \
+  put 644 "$rust/packaging/macos/Assets.xcassets/Angelly.appiconset/icon_$size.png" \
     "$usr/share/icons/hicolor/${size}x${size}/apps/$id.png"
 done
 
 share="$usr/share/angelly"
 mkdir -p "$share/ghostty/themes"
-cp -R "$repo/src/shell-integration" "$share/ghostty/shell-integration"
-cp "$repo/resources/themes/"* "$share/ghostty/themes/"
+cp -R "$rust/third_party/ghostty/src/shell-integration" "$share/ghostty/shell-integration"
+cp "$rust/packaging/themes/"* "$share/ghostty/themes/"
 src=${GHOSTTY_RESOURCES_SRC:-}
 if [ -n "$src" ] && [ -d "$src/ghostty/themes" ]; then cp -R "$src/ghostty/themes/." "$share/ghostty/themes/"; fi
 if [ -n "$src" ] && [ -d "$src/terminfo" ]; then cp -R "$src/terminfo" "$share/terminfo"; fi
